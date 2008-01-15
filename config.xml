@@ -1,0 +1,10 @@
+<jbind>
+    <bind
+        jabber_port='5222' 
+        session_timeout='10000'
+        default_request_timeout='20000'
+    />
+    <http_server
+        port='8080'
+    />
+</jbind>
