@@ -19,7 +19,7 @@ CFLAGS = -Wall -D_GNU_SOURCE $(shell pkg-config iksemel --cflags)
 CFLAGS += -ggdb3
 CXXFLAGS = ${CFLAGS}
 LDLIBS = -I${HOME}/.usr/lib -lrt $(shell pkg-config iksemel --libs)
-TARGET = jbind
+TARGET = bosh
 CC=gcc
 CXX=g++
 
