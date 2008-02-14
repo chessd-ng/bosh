@@ -15,8 +15,8 @@ SRCDIR = src
 OBJDIR = obj
 DEPSDIR = .deps
 CFLAGS = -Wall -D_GNU_SOURCE $(shell pkg-config iksemel --cflags)
-#CFLAGS += -O3 -fomit-frame-pointer
-CFLAGS += -ggdb3
+CFLAGS += -O3 -fomit-frame-pointer -funroll-loops -march=native
+#CFLAGS += -ggdb3
 CXXFLAGS = ${CFLAGS}
 LDLIBS = -I${HOME}/.usr/lib -lrt $(shell pkg-config iksemel --libs)
 TARGET = bosh

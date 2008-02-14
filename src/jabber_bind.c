@@ -41,6 +41,10 @@
                     "%s" \
                     "</body>"
 
+#define BIND_BODY_TYPE "<body rid='%d' sid='%d' type='%s' xmlns='http://jabber.org/protocol/httpbind'>" \
+                    "%s" \
+                    "</body>"
+
 #define JABBER_ERROR_MSG "<error>%s</error>"
 
 int running;
@@ -114,7 +118,7 @@ void jc_flush_messages(JabberClient* j_client) {
 		*ptr = 0;
 		list_delete(xmls, NULL);
 
-		asprintf(&body, BIND_BODY, j_client->rid, j_client->sid, buffer);
+        asprintf(&body, BIND_BODY, j_client->rid, j_client->sid, buffer);
 
 		log(body);
 
@@ -147,7 +151,9 @@ static void _iks_delete(void* _iks) {
     iks_delete(iks);
 }
 
-void jb_close_client(JabberBind* bind, JabberClient* j_client) {
+void jb_close_client(JabberClient* j_client) {
+    JabberBind* bind = j_client->bind;
+
     log("sid = %d", j_client->sid);
 
     if(j_client->connection != NULL) {
@@ -193,7 +199,7 @@ void jb_check_timeout(JabberBind* bind) {
 
     while(!list_empty(to_close)) {
         j_client = list_pop_front(to_close);
-        jb_close_client(bind, j_client);
+        jb_close_client(j_client);
     }
 
     list_delete(to_close, NULL);
@@ -204,7 +210,7 @@ int jc_handle_stanza(void* _j_client, int type, iks* stanza) {
     if(stanza == NULL) {
         return IKS_OK;
     }
-    if(type == IKS_NODE_NORMAL && strcmp(iks_name(stanza), "stream:features") != 0) {
+    if(type == IKS_NODE_NORMAL /*&& strcmp(iks_name(stanza), "stream:features") != 0*/) {
         jc_queue_message(j_client, stanza);
     } else if(type == IKS_NODE_ERROR || type == IKS_NODE_STOP) {
         log("jabber connection ended");
@@ -220,7 +226,7 @@ void jc_read_jabber(void* _j_client) {
     JabberClient* j_client = _j_client;
     iks_recv(j_client->parser, 0);
     if(j_client->alive == 0)
-        jb_close_client(j_client->bind, j_client);
+        jb_close_client(j_client);
 }
 
 void jc_report_error(HttpConnection* connection, const char* msg) {
@@ -296,7 +302,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     sm_add_socket(bind->monitor, j_client->socket_fd, jc_read_jabber, j_client);
 	hash_insert(bind->sid_hash, &j_client->sid, j_client);
     
-	asprintf(&bind_body, BIND_BODY, rid, j_client->sid, "");
+    asprintf(&bind_body, BIND_BODY, rid, j_client->sid, "");
     hs_answer_request(connection, bind_body, strlen(bind_body));
 	free(bind_body);
 
@@ -375,9 +381,11 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
 		jc_set_http(j_client, request->connection, rid);
 
 		jc_deliver_message(j_client, message);
+
+        if(iks_strcmp(iks_find_attrib(message, "type"), "terminate") == 0) {
+            jb_close_client(j_client);
+        }
 	}
-
-
 }
 
 void jb_run(JabberBind* bind) {
@@ -455,19 +463,19 @@ JabberBind* jb_new(iks* config) {
 	return jb;
 }
 
-void jb_delete(JabberBind* jb) {
-	JabberClient* jc;
+void jb_delete(JabberBind* bind) {
+	JabberClient* j_client;
 
-	while(!list_empty(jb->jabber_connections)) {
-		jc = list_front(jb->jabber_connections);
-		jb_close_client(jb, jc);
+	while(!list_empty(bind->jabber_connections)) {
+		j_client = list_front(bind->jabber_connections);
+		jb_close_client(j_client);
 	}
 
-	list_delete(jb->jabber_connections, NULL);
-	hash_delete(jb->sid_hash);
-	hs_delete(jb->server);
-	sm_delete(jb->monitor);
+	list_delete(bind->jabber_connections, NULL);
+	hash_delete(bind->sid_hash);
+	hs_delete(bind->server);
+	sm_delete(bind->monitor);
 
-	free(jb);
+	free(bind);
 }
 
