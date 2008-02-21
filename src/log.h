@@ -22,6 +22,8 @@
 
 #define log(...) _log(__func__, __VA_ARGS__)
 
+void log_set_file(const char* file_name);
+
 void _log(const char* function_name, const char* format, ...);
 
 #endif

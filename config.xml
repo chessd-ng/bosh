@@ -7,4 +7,5 @@
     <http_server
         port='8082'
     />
+    <log filename='bosh.log'/>
 </jbind>

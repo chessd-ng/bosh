@@ -20,15 +20,41 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <time.h>
+
+#include <errno.h>
+#include <string.h>
 
 #include "log.h"
+
+FILE* log_file = NULL;
+
+void log_set_file(const char* file_name) {
+    log_file = fopen(file_name, "r");
+    if(log_file == NULL) {
+        fprintf(stderr, "Could not open %s for logging: %s\n", file_name, strerror(errno));
+        fprintf(stderr, "Switching log output to standard output.\n");
+        log_file = stderr;
+    }
+}
 
 void _log(const char* function_name, const char* format, ...) {
     va_list args;
     char* new_format = NULL;
+    char time_str[256];
+    time_t t;
+
+    if(log_file == NULL) {
+        fprintf(stderr, "Log output not set.\n");
+        log_file = stderr;
+    }
+
+    t = time(NULL);
+    strftime(time_str, 255, "%Y-%m-%d %H:%M:%S", localtime(&t));
+
     va_start(args, format);
-    asprintf(&new_format, "%s: %s\n", function_name, format);
-    vfprintf(stderr, new_format, args);
+    asprintf(&new_format, "%s %s: %s\n", time_str, function_name, format);
+    vfprintf(log_file, new_format, args);
     free(new_format);
 }
 

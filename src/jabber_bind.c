@@ -412,6 +412,7 @@ JabberBind* jb_new(iks* config) {
 	JabberBind* jb;
     iks* bind_config;
     iks* http_config;
+    iks* log_config;
     const char* str;
 
 	jb = malloc(sizeof(JabberBind));
@@ -420,6 +421,7 @@ JabberBind* jb_new(iks* config) {
 
     bind_config = iks_find(config, "bind");
     http_config = iks_find(config, "http_server");
+    log_config = iks_find(config, "log");
 
     if(bind_config == NULL || http_config == NULL) {
         fprintf(stderr, "Incomplete config file, bind or http_server tag is missing\n");
@@ -428,24 +430,29 @@ JabberBind* jb_new(iks* config) {
     }
 
     /* load jabber port */
-    if((str = iks_find_attrib(config, "jabber_port")) != NULL) {
+    if((str = iks_find_attrib(bind_config, "jabber_port")) != NULL) {
         jb->jabber_port = atoi(str);
     } else {
         jb->jabber_port = JABBER_PORT;
     }
     
     /* load session timeout */
-    if((str = iks_find_attrib(config, "session_timeout")) != NULL) {
+    if((str = iks_find_attrib(bind_config, "session_timeout")) != NULL) {
         jb->session_timeout = atoi(str);
     } else {
         jb->session_timeout = SESSION_TIMEOUT;
     }
 
     /* load default_request_timeout */
-    if((str = iks_find_attrib(config, "default_request_timeout")) != NULL) {
+    if((str = iks_find_attrib(bind_config, "default_request_timeout")) != NULL) {
         jb->default_request_timeout = atoi(str);
     } else {
         jb->default_request_timeout = DEFAULT_REQUEST_TIMEOU ;
+    }
+
+    /* load log output */
+    if(log_config && (str = iks_find_attrib(log_config, "filename")) != NULL) {
+        log_set_file(str);
     }
 
 	jb->monitor = sm_new();
