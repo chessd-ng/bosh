@@ -24,15 +24,17 @@
 
 #include "jabber_bind.h"
 
-int main(void) {
+int main(int argc, char** argv) {
     iks* config = 0;
 	JabberBind* bind = 0;
     int ret;
+    char* config_file;
 
-    ret = iks_load("config.xml", &config);
+    config_file = (argc<2) ? "config.xml" : argv[1];
+    ret = iks_load(config_file, &config);
 
     if(ret != IKS_OK) {
-        fprintf(stderr, "Could not load config.xml.\n");
+        fprintf(stderr, "Could not load %s.\n", config_file);
         return 1;
     }
 

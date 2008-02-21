@@ -30,7 +30,7 @@
 FILE* log_file = NULL;
 
 void log_set_file(const char* file_name) {
-    log_file = fopen(file_name, "r");
+    log_file = fopen(file_name, "aw");
     if(log_file == NULL) {
         fprintf(stderr, "Could not open %s for logging: %s\n", file_name, strerror(errno));
         fprintf(stderr, "Switching log output to standard output.\n");
