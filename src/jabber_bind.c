@@ -327,23 +327,10 @@ void jc_set_http(JabberClient* j_client, HttpConnection* connection, int rid) {
     jc_flush_messages(j_client);
 }
 
-void jc_deliver_message(JabberClient* j_client, iks* message) {
-    iks* stanza;
-    char* xml;
-
-    for(stanza = iks_first_tag(message); stanza != NULL; stanza = iks_next_tag(stanza)) {
-        xml = iks_string(NULL, stanza);
-        log(xml);
-        send(j_client->socket_fd, xml, strlen(xml), 0);
-        iks_free(xml);
-    }
-    iks_delete(message);
-}
-
 void jb_handle_request(void* _bind, const HttpRequest* request) {
 	JabberBind* bind;
 	JabberClient* j_client;
-	iks* message;
+	iks* message, *stanza;
 	char* tmp;
 	int sid, rid;
 
@@ -380,11 +367,20 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
 		}
 		jc_set_http(j_client, request->connection, rid);
 
-		jc_deliver_message(j_client, message);
+        /* send stanzas to the client */
+        for(stanza = iks_first_tag(message); stanza != NULL; stanza = iks_next_tag(stanza)) {
+            tmp = iks_string(NULL, stanza);
+            log("%s", tmp);
+            send(j_client->socket_fd, tmp, strlen(tmp), 0);
+            iks_free(tmp);
+        }
 
+        /* close the connection if the type is terminate */
         if(iks_strcmp(iks_find_attrib(message, "type"), "terminate") == 0) {
             jb_close_client(j_client);
         }
+
+        iks_delete(message);
 	}
 }
 
