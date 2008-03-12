@@ -50,7 +50,7 @@ void _log(const char* function_name, const char* format, ...) {
     }
 
     t = time(NULL);
-    strftime(time_str, 255, "%Y-%m-%d %H:%M:%S", localtime(&t));
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&t));
 
     va_start(args, format);
     asprintf(&new_format, "%s %s: %s\n", time_str, function_name, format);
