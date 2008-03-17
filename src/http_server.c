@@ -240,7 +240,7 @@ void hs_answer_request(HttpConnection* connection, const char* msg, size_t size)
 
 	header = make_http_head(200, size);
 
-    log(msg);
+    log("%s", msg);
 
     send(connection->socket_fd, header, strlen(header), 0);
     send(connection->socket_fd, msg, size, 0);

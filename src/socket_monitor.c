@@ -109,13 +109,14 @@ void sm_poll(SocketMonitor* monitor, time_type max_time) {
 	ret = poll(monitor->poll_list, monitor->n_clients, max_time);
 	if(ret > 0) {
 		for(i = 0; i < monitor->n_clients; ++i) {
+            /* if the socket was removed during the execution of the callback? */
 			if((monitor->poll_list[i].revents & POLLIN) != 0) {
 				si = hash_find(monitor->socket_hash, &monitor->poll_list[i].fd);
 				si->callback(si->user_data);
 			}
 		}
 	} else if(ret < 0) {
-		log(strerror(errno));
+		log("%s", strerror(errno));
 	}
 
 }

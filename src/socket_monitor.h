@@ -35,6 +35,8 @@ typedef struct SocketInfo {
     void* user_data;
 	int id;
 	int socket_fd;
+
+    /* iterator to this socket in the monitor list */
 	list_iterator it;
 } SocketInfo;
 
@@ -46,16 +48,22 @@ typedef struct SocketMonitor {
 } SocketMonitor;
 
 
+/*! \brief Create a new monitor. */
 SocketMonitor* sm_new();
 
+/*! \brief Destroy a monitor. */
 void sm_delete(SocketMonitor* monitor);
 
+/*! \brief Add a socket to the monitor. */
 void sm_add_socket(SocketMonitor* monitor, int socket_fd, Callback callback, void* user_data);
 
+/*! \brief Replace a socket from the monitor. */
 void sm_replace_socket(SocketMonitor* monitor, int socket_fd, Callback callback, void* user_data);
 
+/*! \brief Remove a socket from the monitor. */
 void sm_remove_socket(SocketMonitor* monitor, int socket_fd);
 
+/*! \brief Poll the sockets for any activity. */
 void sm_poll(SocketMonitor* monitor, time_type max_time);
 
 #endif

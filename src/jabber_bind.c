@@ -120,7 +120,7 @@ void jc_flush_messages(JabberClient* j_client) {
 
         asprintf(&body, BIND_BODY, j_client->rid, j_client->sid, buffer);
 
-		log(body);
+		log("%s", body);
 
 		hs_answer_request(j_client->connection, body, strlen(body));
 		j_client->connection = NULL;
@@ -336,7 +336,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
 
 	bind = _bind;
 
-	log(request->data);
+	log("%s", request->data);
 
 	message = iks_tree(request->data, request->data_size, NULL);
 
