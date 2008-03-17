@@ -20,9 +20,9 @@
 #ifndef HASH_H
 #define HASH_H
 
-typedef unsigned int (*hash_function)(void*);
-typedef int (*hash_compare_function)(void*, void*);
-typedef void (*hash_callback)(void*, void*);
+typedef unsigned int (*hash_function)(const void*);
+typedef int (*hash_compare_function)(const void*, const void*);
+typedef void (*hash_callback)(const void*, void*);
 
 struct hash;
 typedef struct hash hash;

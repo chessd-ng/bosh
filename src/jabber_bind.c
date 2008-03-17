@@ -55,12 +55,12 @@ void handle_signal(int signal) {
 }
 
 
-static int compare_sid(void* s1, void* s2) {
-	return *(int*)s1 == *(int*)s2;
+static int compare_sid(const void* s1, const void* s2) {
+	return *(const int*)s1 == *(const int*)s2;
 }
 
-static unsigned int hash_sid(void* s) {
-	return *(int*)s;
+static unsigned int hash_sid(const void* s) {
+	return *(const int*)s;
 }
 
 time_type jb_closest_timeout(JabberBind* bind) {
