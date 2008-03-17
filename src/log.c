@@ -44,16 +44,21 @@ void _log(const char* function_name, const char* format, ...) {
     char time_str[256];
     time_t t;
 
+    /* check output file */
     if(log_file == NULL) {
         fprintf(stderr, "Log output not set.\n");
         log_file = stderr;
     }
 
+    /* create timestamp */
     t = time(NULL);
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&t));
 
-    va_start(args, format);
+    /* modify the format received */
     asprintf(&new_format, "%s %s: %s\n", time_str, function_name, format);
+
+    /* print the message to the log */
+    va_start(args, format);
     vfprintf(log_file, new_format, args);
     free(new_format);
 }

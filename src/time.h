@@ -22,6 +22,7 @@
 
 typedef long long time_type;
 
+/*" \brief Returns he current time in miliseconds */
 time_type get_time();
 
 #endif

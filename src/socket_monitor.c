@@ -24,6 +24,23 @@
 #include "socket_monitor.h"
 #include "log.h"
 
+typedef struct SocketInfo {
+    Callback callback;
+    void* user_data;
+	int id;
+	int socket_fd;
+
+    /* iterator to this socket in the monitor list */
+	list_iterator it;
+} SocketInfo;
+
+struct SocketMonitor {
+    struct pollfd poll_list[MAX_CLIENTS];
+    int n_clients;
+	hash* socket_hash;
+    list* clients;
+};
+
 static unsigned int hash_int(const void* i) {
 	return *(const int*)i;
 }

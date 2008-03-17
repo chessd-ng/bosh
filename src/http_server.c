@@ -28,7 +28,7 @@
 #include "socket_util.h"
 #include "log.h"
 
-#define PROXY_PORT 8080
+#define HTTP_PORT 8080
 
 #define HTML_ERROR "<html><head> \
 						<title>400 Bad Request</title> \
@@ -37,6 +37,26 @@
 						<p>%s</p> \
 						<hr> \
 						</body></html>"
+
+#define MAX_BUFFER_SIZE (1024*128)
+
+struct HttpConnection {
+    char buffer[MAX_BUFFER_SIZE+1];
+    size_t buffer_size;
+    struct HttpServer* server;
+    int socket_fd;
+    int rid;
+	list_iterator it;
+	HttpHeader* header;
+};
+
+struct HttpServer {
+    list* http_connections;
+    SocketMonitor* monitor;
+    int socket_fd;
+	hs_request_callback callback;
+	void* user_data;
+};
 
 static void hs_report_error(HttpConnection* connection, const char* msg) {
 	char* body = NULL;
@@ -200,7 +220,7 @@ HttpServer* hs_new(iks* config, SocketMonitor* monitor, hs_request_callback call
     if((str = iks_find_attrib(config, "port")) != NULL) {
         port = atoi(str);
     } else {
-        port = PROXY_PORT;
+        port = HTTP_PORT;
     }
 
     fd = listen_socket(port);

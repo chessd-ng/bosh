@@ -227,7 +227,7 @@ int hash_has_key(hash* h, void* key) {
 }
 
 /*! \brief The size of the table */
-unsigned int hash_size(hash* h) {
+size_t hash_size(hash* h) {
 	return h->element_count;
 }
 

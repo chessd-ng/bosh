@@ -43,7 +43,7 @@ void* hash_erase(hash*, void* key);
 
 int hash_has_key(hash*, void* key);
 
-unsigned int hash_size(hash*);
+size_t hash_size(hash*);
 
 void hash_iterate(hash*, hash_callback);
 

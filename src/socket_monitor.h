@@ -28,25 +28,10 @@
 
 #define MAX_CLIENTS (1024*16)
 
-typedef void (*Callback)(void*);
+typedef void (*Callback)(void* user_data);
 
-typedef struct SocketInfo {
-    Callback callback;
-    void* user_data;
-	int id;
-	int socket_fd;
-
-    /* iterator to this socket in the monitor list */
-	list_iterator it;
-} SocketInfo;
-
-typedef struct SocketMonitor {
-    struct pollfd poll_list[MAX_CLIENTS];
-    int n_clients;
-	hash* socket_hash;
-    list* clients;
-} SocketMonitor;
-
+struct SocketMonitor;
+typedef struct SocketMonitor SocketMonitor;
 
 /*! \brief Create a new monitor. */
 SocketMonitor* sm_new();
