@@ -404,6 +404,7 @@ void jb_run(JabberBind* bind) {
     }
 }
 
+/* !\brief crete a new bind server */
 JabberBind* jb_new(iks* config) {
 	JabberBind* jb;
     iks* bind_config;
@@ -414,44 +415,46 @@ JabberBind* jb_new(iks* config) {
 	jb = malloc(sizeof(JabberBind));
 
     /* Load config */
-
     bind_config = iks_find(config, "bind");
     http_config = iks_find(config, "http_server");
     log_config = iks_find(config, "log");
 
-    if(bind_config == NULL || http_config == NULL) {
-        fprintf(stderr, "Incomplete config file, bind or http_server tag is missing\n");
+    if(bind_config == NULL || http_config == NULL || log_config == NULL) {
+        fprintf(stderr, "Incomplete config file.\n");
         free(jb);
         return NULL;
     }
 
-    /* load jabber port */
+    /* set jabber port */
     if((str = iks_find_attrib(bind_config, "jabber_port")) != NULL) {
         jb->jabber_port = atoi(str);
     } else {
         jb->jabber_port = JABBER_PORT;
     }
     
-    /* load session timeout */
+    /* set session timeout */
     if((str = iks_find_attrib(bind_config, "session_timeout")) != NULL) {
         jb->session_timeout = atoi(str);
     } else {
         jb->session_timeout = SESSION_TIMEOUT;
     }
 
-    /* load default_request_timeout */
+    /* set default_request_timeout */
     if((str = iks_find_attrib(bind_config, "default_request_timeout")) != NULL) {
         jb->default_request_timeout = atoi(str);
     } else {
         jb->default_request_timeout = DEFAULT_REQUEST_TIMEOU ;
     }
 
-    /* load log output */
+    /* set log output */
     if(log_config && (str = iks_find_attrib(log_config, "filename")) != NULL) {
         log_set_file(str);
     }
 
+    /* create a socket monitor */
 	jb->monitor = sm_new();
+
+    /* create the http server */
 	jb->server = hs_new(http_config, jb->monitor, jb_handle_request, jb);
 
 	if(jb->server == NULL) {
@@ -460,23 +463,34 @@ JabberBind* jb_new(iks* config) {
 		return NULL;
 	}
 
+    /* set other values */
 	jb->jabber_connections = list_new();
 	jb->sid_hash = hash_new(hash_sid, compare_sid);
+
+    /* seed the random generator */
+	srand48(get_time());
 
 	return jb;
 }
 
+/*! \brief destroy a bin server*/
 void jb_delete(JabberBind* bind) {
 	JabberClient* j_client;
 
+    /* close all jabber connections */
 	while(!list_empty(bind->jabber_connections)) {
 		j_client = list_front(bind->jabber_connections);
 		jb_close_client(j_client);
 	}
 
+    /* free all data structures */
 	list_delete(bind->jabber_connections, NULL);
 	hash_delete(bind->sid_hash);
+
+    /* delete the http server */
 	hs_delete(bind->server);
+
+    /* delete the socket monitor */
 	sm_delete(bind->monitor);
 
 	free(bind);
