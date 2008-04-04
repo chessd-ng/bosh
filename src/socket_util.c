@@ -28,6 +28,7 @@
 
 #include "socket_util.h"
 
+/*! \brief Create a socket to listen a port */
 int listen_socket(int port) {
 
     int socket_fd;
@@ -56,6 +57,7 @@ int listen_socket(int port) {
 
 }
 
+/*! \brief Create a socket connected to host */
 int connect_socket(const char* host, int port) {
     struct hostent *hp;
     struct sockaddr_in sa;
