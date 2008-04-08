@@ -277,12 +277,16 @@ int jc_handle_stanza(void* _j_client, int type, iks* stanza) {
 
 /*! \brief Handle activity in the jabber connection */
 void jc_read_jabber(void* _j_client) {
+    int ret;
     JabberClient* j_client = _j_client;
 
     /* receive messages, messages will be handled to jc_handle_stanza */
-    iks_recv(j_client->parser, 0);
-    if(j_client->alive == 0)
+    ret = iks_recv(j_client->parser, 0);
+
+    /* close the client if the connection was closed */
+    if(j_client->alive == 0 || ret != IKS_OK) {
         jb_close_client(j_client);
+    }
 }
 
 /* \brief Report a error to the client */
