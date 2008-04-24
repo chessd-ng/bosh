@@ -20,10 +20,12 @@ All you need to do is to tell apache to forward a given address to a port that
 the bosh will listen.
 
 Say you want to redirect http://localhost/jabber to localhost:8082 you have to add
-the following lines to apache.conf.
+the following lines to apache.conf:
 
 ProxyPass /jabber http://localhost:8082
 ProxyPassReverse /jabber http://localhost:8082
+
+You must enable the proxy module too, if it isn't already.
 
 --- Setting up bosh ---
 
