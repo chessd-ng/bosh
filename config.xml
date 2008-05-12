@@ -1,11 +1,23 @@
 <jbind>
+    <!-- bind options
+
+        jabber_port is the port that the jabber sever is litening
+                    522 is the default.
+        session_timeout is the limit of time in miliseconds a session
+                        will be kept open without any traffic request
+        default_request_timeout is the default timeout for a request
+                                if the client does'nt specify one
+    --!>
     <bind
         jabber_port='5222' 
         session_timeout='60000'
         default_request_timeout='20000'
     />
+    <!-- port is the port to listen for incoming HTTP request --!>
     <http_server
         port='8082'
     />
-    <log filename='log/bosh.log'/>
+    <!-- The log output --!>
+    <log filename='log/bosh.log'
+         verbose='ERROR'/>
 </jbind>

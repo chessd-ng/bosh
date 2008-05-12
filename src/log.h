@@ -20,10 +20,17 @@
 #ifndef LOG_H
 #define LOG_H
 
-#define log(...) _log(__func__, __VA_ARGS__)
+#define DEBUG 0
+#define INFO 1
+#define WARNING 2
+#define ERROR 3
+
+#define log(level, ...) _log(__func__, level, __VA_ARGS__)
 
 void log_set_file(const char* file_name);
 
-void _log(const char* function_name, const char* format, ...);
+void log_set_verbose(int verbose_level);
+
+void _log(const char* function_name, int level, const char* format, ...);
 
 #endif

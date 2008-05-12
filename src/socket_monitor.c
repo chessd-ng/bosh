@@ -126,7 +126,7 @@ void sm_poll(SocketMonitor* monitor, time_type max_time) {
     int ret, i;
 	SocketInfo* si;
 
-	log("sockets = %d", monitor->n_clients);
+	log(INFO, "sockets = %d", monitor->n_clients);
 
     /* poll for events and call the callbacks */
 	ret = poll(monitor->poll_list, monitor->n_clients, max_time);
@@ -142,7 +142,7 @@ void sm_poll(SocketMonitor* monitor, time_type max_time) {
 		}
 	} else if(ret < 0) {
         /* we got a error */
-		log("%s", strerror(errno));
+		log(ERROR, "%s", strerror(errno));
 	}
 }
 

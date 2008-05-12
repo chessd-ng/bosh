@@ -27,27 +27,46 @@
 
 #include "log.h"
 
-FILE* log_file = NULL;
+struct {
+    FILE* file;
+    int level;
+} log_conf = {NULL, ERROR};
+
+const char VERBOSE_LEVEL_NAME[][64] = {
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR"
+};
 
 void log_set_file(const char* file_name) {
-    log_file = fopen(file_name, "aw");
-    if(log_file == NULL) {
+    log_conf.file = fopen(file_name, "aw");
+    if(log_conf.file == NULL) {
         fprintf(stderr, "Could not open %s for logging: %s\n", file_name, strerror(errno));
         fprintf(stderr, "Switching log output to standard output.\n");
-        log_file = stderr;
+        log_conf.file = stderr;
     }
 }
 
-void _log(const char* function_name, const char* format, ...) {
+void log_set_verbose(int verbose_level) {
+    log_conf.level = verbose_level;
+}
+
+void _log(const char* function_name, int level, const char* format, ...) {
     va_list args;
     char* new_format = NULL;
     char time_str[256];
     time_t t;
 
+    /* check verbosity level */
+    if(level < log_conf.level) {
+        return;
+    }
+
     /* check output file */
-    if(log_file == NULL) {
+    if(log_conf.file == NULL) {
         fprintf(stderr, "Log output not set.\n");
-        log_file = stderr;
+        log_conf.file = stderr;
     }
 
     /* create timestamp */
@@ -55,11 +74,11 @@ void _log(const char* function_name, const char* format, ...) {
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&t));
 
     /* modify the format received */
-    asprintf(&new_format, "%s %s: %s\n", time_str, function_name, format);
+    asprintf(&new_format, "%s %s %s: %s\n", time_str, function_name, VERBOSE_LEVEL_NAME[level], format);
 
     /* print the message to the log */
     va_start(args, format);
-    vfprintf(log_file, new_format, args);
+    vfprintf(log_conf.file, new_format, args);
     free(new_format);
 }
 

@@ -63,7 +63,7 @@ volatile int running;
 
 /*! \brief The signal handler */
 void handle_signal(int signal) {
-    log("signal caught");
+    log(INFO, "signal caught");
     running = 0;
 }
 
@@ -112,6 +112,7 @@ void jc_flush_messages(JabberClient* j_client) {
     list* xmls;
     int size, n;
 
+    /* check if there is a pending request and if there is any data to send */
     if(j_client->connection != NULL && !list_empty(j_client->output_queue)) {
 
         size = 0;
@@ -143,7 +144,7 @@ void jc_flush_messages(JabberClient* j_client) {
         /* create http content */
         asprintf(&body, MESSAGE_WRAPPER, buffer);
 
-        log("%s", body);
+        log(INFO, "%s", body);
 
         /* send messages */
         hs_answer_request(j_client->connection, body, strlen(body));
@@ -188,7 +189,7 @@ static void _iks_delete(void* _iks) {
 void jb_close_client(JabberClient* j_client) {
     JabberBind* bind = j_client->bind;
 
-    log("sid = %d", j_client->sid);
+    log(INFO, "sid = %d", j_client->sid);
 
     /* drop the request if we have one */
     if(j_client->connection != NULL) {
@@ -216,7 +217,7 @@ void jb_close_client(JabberClient* j_client) {
     free(j_client);
 }
 
-/*! \brief Chakc timeouts and handle them  */
+/*! \brief Check timeouts and handle them */
 void jb_check_timeout(JabberBind* bind) {
     JabberClient* j_client;
     list_iterator it;
@@ -238,7 +239,7 @@ void jb_check_timeout(JabberBind* bind) {
             jc_drop_request(j_client, 0);
         } else if(j_client->connection == NULL && idle >= bind->session_timeout) {
             /* close the conenction if the session timedout due to innactivity */
-            log("timeout on sid = %d", j_client->sid);
+            log(INFO, "timeout on sid = %d", j_client->sid);
             list_push_back(to_close, j_client);
         }
     }
@@ -265,7 +266,7 @@ int jc_handle_stanza(void* _j_client, int type, iks* stanza) {
         jc_queue_message(j_client, stanza);
     } else if(type == IKS_NODE_ERROR || type == IKS_NODE_STOP) {
         /* close the connection in case of error or stop */
-        log("jabber connection ended");
+        log(INFO, "jabber connection ended");
         iks_delete(stanza);
         j_client->alive = 0;
     } else {
@@ -326,7 +327,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     /* get to parameter */
     host = iks_find_attrib(body, "to");
     if(host == NULL) {
-        log("wrong header");
+        log(WARNING, "wrong header");
         free(j_client);
         iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
@@ -336,7 +337,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     /* get rid parameter */
     tmp = iks_find_attrib(body, "rid");
     if(tmp == NULL) {
-        log("Wrong header");
+        log(WARNING, "Wrong header");
         free(j_client);
         iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
@@ -347,14 +348,14 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     /* connect to the jabber server */
     parser = jabber_connect(host, bind->jabber_port, j_client, jc_handle_stanza);
     if(parser == NULL) {
-        log("could not connect to jabber server");
+        log(ERROR, "could not connect to jabber server");
         free(j_client);
         iks_delete(body);
         jc_report_error(connection, CONNECTION_FAILED);
         return NULL;
     }
 
-    log("connected to jabber server");
+    log(INFO, "connected to jabber server");
 
     /* pick a random sid */
     do {
@@ -419,7 +420,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
 
     bind = _bind;
 
-    log("%s", request->data);
+    log(INFO, "%s", request->data);
 
     /* parse the content */
     message = iks_tree(request->data, request->data_size, NULL);
@@ -441,7 +442,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         /* get the rid */
         tmp = iks_find_attrib(message, "rid");
         if(tmp == NULL) {
-            log("rid not found");
+            log(WARNING, "rid not found");
             jc_report_error(request->connection, BAD_FORMAT);
             iks_delete(message);
             return;
@@ -451,7 +452,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         /* get the client */
         j_client = jb_find_jabber(bind, sid);
         if(j_client == NULL) {
-            log("sid not found");
+            log(WARNING, "sid not found");
             jc_report_error(request->connection, SID_NOT_FOUND);
             iks_delete(message);
             return;
@@ -461,7 +462,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         /* send stanzas to the client */
         for(stanza = iks_first_tag(message); stanza != NULL; stanza = iks_next_tag(stanza)) {
             tmp = iks_string(NULL, stanza);
-            log("%s", tmp);
+            log(INFO, "%s", tmp);
             send(j_client->socket_fd, tmp, strlen(tmp), 0);
             iks_free(tmp);
         }
@@ -487,7 +488,7 @@ void jb_run(JabberBind* bind) {
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
 
-    log("server started");
+    log(INFO, "server started");
 
     while(running == 1) {
         /* take the closets timeout */
@@ -512,6 +513,7 @@ JabberBind* jb_new(iks* config) {
     iks* http_config;
     iks* log_config;
     const char* str;
+    int i;
 
     jb = malloc(sizeof(JabberBind));
 
@@ -550,6 +552,22 @@ JabberBind* jb_new(iks* config) {
     /* set log output */
     if(log_config && (str = iks_find_attrib(log_config, "filename")) != NULL) {
         log_set_file(str);
+    }
+
+    /* set verbose level */
+    if(log_config && (str = iks_find_attrib(log_config, "verbose")) != NULL) {
+        if(strcmp(str, "ERROR") == 0) {
+            i = ERROR;
+        } else if(strcmp(str, "WARNING") == 0) {
+            i = ERROR;
+        } else if(strcmp(str, "INFO") == 0) {
+            i = INFO;
+        } else if(strcmp(str, "DEBUG") == 0) {
+            i = DEBUG;
+        }  else {
+            i = ERROR;
+        }
+        log_set_verbose(i);
     }
 
     /* create a socket monitor */
