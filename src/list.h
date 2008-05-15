@@ -20,8 +20,7 @@
 #ifndef lista_h
 #define lista_h
 
-/* Macro used to iterate through list elements */
-#define list_foreach(it, l) for(it = list_begin(l); it != list_end(l); it = list_next(it))
+#include <stdlib.h>
 
 /*! \brief A callback function that receies one element of the list */
 typedef void(*proc)(void *v);
@@ -29,18 +28,133 @@ typedef void(*proc)(void *v);
 /*! \brief A callback function that compares two elements in the list */
 typedef int(*compare_function)(void *v1,void *v2);
 
+/*! \brief A node in the list */
+typedef struct _list_node {
+	struct _list_node *next, *prev;
+	void *value;
+} _list_node;
 
-struct _list_node;
-typedef struct _list_node _list_node;
-
-struct list;
-typedef struct list list;
+/*! \brief The list */
+typedef struct list {
+	_list_node head;
+} list;
 
 /*! \brief The list iterator's */
 typedef _list_node* list_iterator;
 
+inline static _list_node* _alloc_list_node() {
+    return malloc(sizeof(_list_node));
+}
+
+inline static void _free_list_node(_list_node* node) {
+    free(node);
+}
+
 /*! \brief Create a new list */
-list* list_new();
+static inline list* list_new() {
+	list *l = malloc(sizeof(list));
+	if(l == NULL)
+		return NULL;
+    l->head.next = l->head.prev = &l->head;
+	return l;
+}
+
+/*! \brief Returns non-zero if the list is empty */
+static inline int list_empty(list* l) {
+    return &l->head == l->head.next;
+}
+
+/*! \brief Insert an element after the element pointed by the iterator*/
+static inline list_iterator list_insert(list_iterator pos, void* value) {
+    _list_node* node;
+
+    node = _alloc_list_node();
+    node->next = pos;
+    node->prev = pos->prev;
+    node->next->prev = node;
+    node->prev->next = node;
+    node->value = value;
+
+	return node;
+}
+
+/*! \brief Erases the element pointed by the iterator 
+ *
+ * \return Returns the removed element
+ */
+static inline void* list_erase(list_iterator iterator) {
+    void* value = iterator->value;
+
+    iterator->prev->next = iterator->next;
+    iterator->next->prev = iterator->prev;
+    _free_list_node(iterator);
+
+    return value;
+}
+
+/*! \brief Insert an element in the end of the list */
+static inline list_iterator list_push_back(list* l, void *v) {
+    return list_insert(&l->head, v);
+}
+
+/*! \brief Remove and return the last element */
+static inline void* list_pop_back(list* l) {
+    return list_erase(l->head.prev);
+}
+
+/*! \brief Insert an element in the begining of the list */
+static inline list_iterator list_push_front(list* l,void *v) {
+    return list_insert(l->head.next, v);
+}
+
+/*! \brief Remove and return the first element of the list */
+static inline void *list_pop_front(list* l) {
+    return list_erase(l->head.next);
+}
+
+/*! \brief Returns the first element */
+static inline void* list_front(list* l) {
+    return l->head.next->value;
+}
+
+/*! \brief Returns the last element */
+static inline void* list_back(list* l) {
+    return l->head.prev->value;
+}
+
+/*! \brief Return an iterator to the first element */
+static inline list_iterator list_begin(list* l) {
+    return l->head.next;
+}
+
+/*! \brief Return an iterator to the end of the list
+ *
+ * The returned iterator is not dereferenceable.
+ */
+static inline list_iterator list_end(list* l) {
+    return &l->head;
+}
+
+/*! \breif Returns the iterator to the next element */
+static inline list_iterator list_next(list_iterator iterator) {
+    return iterator->next;
+}
+
+/*! \brief Returns the element pointed by the iterator */
+static inline void* list_iterator_value(list_iterator iterator) {
+    return iterator->value;
+}
+
+/*! \brief Erase all elements of the list */
+static inline void list_clear(list* l, proc delete_function) {
+    void* v;
+
+    while(!list_empty(l)) {
+        v = list_pop_front(l);
+        if(delete_function != NULL)
+            delete_function(v);
+    }
+}
 
 /*! \brief Destroy a list
  *
@@ -49,55 +163,10 @@ list* list_new();
  *          to free the elements in the list,
  *          is NULL it will not be used.
  */
-void list_delete(list *l, proc delete_function);
-
-/*! \brief Insert an element in the end of the list */
-list_iterator list_push_back(list* l, void *v);
-
-/*! \brief Remove and return the last element */
-void* list_pop_back(list* l);
-
-/*! \brief Insert an element in the begining of the list */
-list_iterator list_push_front(list* l,void *v);
-
-/*! \brief Remove and return the first element of the list */
-void *list_pop_front(list* l);
-
-/*! \brief Returns the first element */
-void* list_front(list* l);
-
-/*! \brief Returns the last element */
-void* list_back(list* l);
-
-/*! \brief Return an iterator to the first element */
-list_iterator list_begin(list* l);
-
-/*! \brief Return an iterator to the end of the list
- *
- * The returned iterator is not dereferenceable.
- */
-list_iterator list_end(list* l);
-
-/*! \breif Returns the iterator to the next element */
-list_iterator list_next(list_iterator iterator);
-
-/*! \brief Returns the element pointed by the iterator */
-void* list_iterator_value(list_iterator iterator);
-
-/*! \brief Erases the element pointed by the iterator 
- *
- * \return Returns the removed element
- */
-void* list_erase(list_iterator iterator);
-
-/*! \brief Returns non-zero if the list is empty */
-int list_empty(list* l);
-
-/*! \brief Erase all elements of the list */
-void list_clear(list* l, proc delete_function);
-
-/*! \brief Insert an element after the element pointed by the iterator*/
-list_iterator list_insert(list_iterator pos, void* v);
+static inline void list_delete(list *l, proc delete_function) {
+    list_clear(l, delete_function);
+    free(l);
+}
 
 /*! \breif Find an element in the list
  *
@@ -105,6 +174,18 @@ list_iterator list_insert(list_iterator pos, void* v);
  * \param v is the element to be found
  * \param compare_function is the function to be used to compare v to the elements in the list.
  */
-list_iterator list_find(list* l, void* v, compare_function func);
+static inline list_iterator list_find(list* l, void* v, compare_function func) {
+    _list_node* node;
+
+    for(node = l->head.next; node != &l->head; node = node->next) {
+        if(func(node->value, v)) {
+            return node;
+        }
+    }
+    return list_end(l);
+}
+
+/* Macro used to iterate through list elements */
+#define list_foreach(it, l) for(it = list_begin(l); it != list_end(l); it = list_next(it))
 
 #endif

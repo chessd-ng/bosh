@@ -4,12 +4,12 @@ SOURCES = \
 	src/http_server.c \
 	src/jabber_bind.c \
 	src/jabber.c \
-	src/list.c \
 	src/log.c \
 	src/main.c \
 	src/socket_monitor.c \
 	src/socket_util.c \
-	src/time.c
+	src/time.c \
+	src/list.c
 		  
 SRCDIR = src
 OBJDIR = obj
