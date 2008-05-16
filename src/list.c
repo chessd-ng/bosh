@@ -19,3 +19,5 @@
 
 #include "list.h"
 
+IMPLEMENT_ALLOCATOR(_list_node)
+IMPLEMENT_ALLOCATOR(list)

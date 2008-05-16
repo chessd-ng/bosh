@@ -22,6 +22,8 @@
 
 #include <stdlib.h>
 
+#include "allocator.h"
+
 /*! \brief A callback function that receies one element of the list */
 typedef void(*proc)(void *v);
 
@@ -42,17 +44,12 @@ typedef struct list {
 /*! \brief The list iterator's */
 typedef _list_node* list_iterator;
 
-inline static _list_node* _alloc_list_node() {
-    return malloc(sizeof(_list_node));
-}
-
-inline static void _free_list_node(_list_node* node) {
-    free(node);
-}
+DECLARE_ALLOCATOR(_list_node, 4096)
+DECLARE_ALLOCATOR(list, 32)
 
 /*! \brief Create a new list */
 static inline list* list_new() {
-	list *l = malloc(sizeof(list));
+	list *l = list_alloc(sizeof(list));
 	if(l == NULL)
 		return NULL;
     l->head.next = l->head.prev = &l->head;
@@ -68,7 +65,7 @@ static inline int list_empty(list* l) {
 static inline list_iterator list_insert(list_iterator pos, void* value) {
     _list_node* node;
 
-    node = _alloc_list_node();
+    node = _list_node_alloc();
     node->next = pos;
     node->prev = pos->prev;
     node->next->prev = node;
@@ -87,7 +84,7 @@ static inline void* list_erase(list_iterator iterator) {
 
     iterator->prev->next = iterator->next;
     iterator->next->prev = iterator->prev;
-    _free_list_node(iterator);
+    _list_node_free(iterator);
 
     return value;
 }
@@ -165,7 +162,7 @@ static inline void list_clear(list* l, proc delete_function) {
  */
 static inline void list_delete(list *l, proc delete_function) {
     list_clear(l, delete_function);
-    free(l);
+    list_free(l);
 }
 
 /*! \breif Find an element in the list

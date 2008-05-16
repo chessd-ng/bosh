@@ -30,6 +30,8 @@
 #include "socket_util.h"
 #include "log.h"
 
+#include "allocator.h"
+
 #define HTTP_PORT 8080
 
 #define HTML_ERROR "<html><head> \
@@ -59,6 +61,9 @@ struct HttpServer {
 	hs_request_callback callback;
 	void* user_data;
 };
+
+DECLARE_ALLOCATOR(HttpConnection, 1024);
+IMPLEMENT_ALLOCATOR(HttpConnection);
 
 /*! \brief Send an http error response */
 static void hc_report_error(HttpConnection* connection, const char* msg) {
@@ -97,7 +102,7 @@ static void hc_delete(HttpConnection* connection) {
     }
 
     /* free memory */
-    free(connection);
+    HttpConnection_free(connection);
 }
 
 static void hc_read_body(void* _connection);
@@ -108,7 +113,7 @@ static HttpConnection* hc_create(HttpServer* server, int socket_fd) {
     HttpConnection* connection;
     
     /* alloc memory for the struct */
-    connection = malloc(sizeof(HttpConnection));
+    connection = HttpConnection_alloc();
 
     /* init values */
     connection->buffer_size = 0;

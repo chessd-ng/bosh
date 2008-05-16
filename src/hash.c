@@ -16,8 +16,9 @@
  *   You should have received a copy of the GNU General Public License
  */
 
-
 #include <stdlib.h>
+
+#include "allocator.h"
 
 #include "hash.h"
 
@@ -31,18 +32,24 @@ typedef struct _hash_node {
 /*! \brief The hash table */
 struct hash {
 	_hash_node* table;
-	unsigned int table_size;
-	int element_count;
+	size_t table_size;
+	size_t element_count;
 
 	hash_function hf;
 	hash_compare_function cf;
 };
 
+DECLARE_ALLOCATOR(_hash_node, 4096);
+IMPLEMENT_ALLOCATOR(_hash_node);
+
+DECLARE_ALLOCATOR(hash, 32);
+IMPLEMENT_ALLOCATOR(hash);
+
 /* borrowed from g++ hash implementation */
 static const unsigned long prime_count = 28;
 
 /* A list of good sizes for the hash table */
-static const unsigned long prime_list[] = {
+static const size_t prime_list[] = {
 	53ul,         97ul,         193ul,        389ul,       769ul,
 	1543ul,       3079ul,       6151ul,       12289ul,     24593ul,
 	49157ul,      98317ul,      196613ul,     393241ul,    786433ul,
@@ -55,7 +62,7 @@ static const unsigned long prime_list[] = {
 hash* hash_new(hash_function hf, hash_compare_function cf) {
 	hash* h;
 
-	h = malloc(sizeof(hash));
+    h = hash_alloc();
 
 	h->hf = hf;
 	h->cf = cf;
@@ -73,7 +80,7 @@ hash* hash_new(hash_function hf, hash_compare_function cf) {
 static _hash_node* node_new(void* key, void* value) {
 	_hash_node* node;
 
-	node = malloc(sizeof(_hash_node));
+    node = _hash_node_alloc();
 
 	node->key = key;
 	node->value = value;
@@ -84,7 +91,7 @@ static _hash_node* node_new(void* key, void* value) {
 
 /*! \brief Insert a node to the hash and don't resize the table. */
 static void hash_insert_noresize(hash* h, _hash_node* node) {
-	unsigned int hash_pos;
+	size_t hash_pos;
 
 	hash_pos = h->hf(node->key) % h->table_size;
 
@@ -95,7 +102,7 @@ static void hash_insert_noresize(hash* h, _hash_node* node) {
 /*! \brief Resize the table if necessary. */
 static void hash_resize(hash* h) {
 	_hash_node* old_table;
-	unsigned int old_size;
+	size_t old_size;
 	_hash_node* node;
 	int i;
 
@@ -140,7 +147,7 @@ void hash_insert(hash* h, void* key, void* value) {
  * */
 static _hash_node* hash_find_prev_node(hash* h, void* key) {
 	_hash_node* node;
-	unsigned int hash_pos;
+	size_t hash_pos;
 
 	hash_pos = h->hf(key) % h->table_size;
 	
@@ -164,7 +171,7 @@ void* hash_erase_next_node(hash* h, _hash_node* node) {
     node->next = erased_node->next;
     value = erased_node->value;
 
-    free(erased_node);
+    _hash_node_free(erased_node);
 
     h->element_count --;
 
@@ -218,7 +225,7 @@ void hash_clear(hash* h) {
 void hash_delete(hash* h) {
 	hash_clear(h);
 	free(h->table);
-	free(h);
+	hash_free(h);
 }
 
 /*! \brief Ask if the table contain a given key. */

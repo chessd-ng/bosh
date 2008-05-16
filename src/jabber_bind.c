@@ -30,6 +30,7 @@
 #include "jabber_bind.h"
 #include "jabber.h"
 #include "log.h"
+#include "allocator.h"
 
 #define JABBER_PORT 5222
 
@@ -60,6 +61,33 @@ const char ERROR_TABLE[][2][64] = {
 };
 
 volatile int running;
+
+typedef struct JabberClient {
+    iksparser* parser;
+    int socket_fd;
+    int sid, rid;
+    HttpConnection* connection;
+    list* output_queue;
+    int alive;
+    time_type timestamp;
+    time_type wait;
+	list_iterator it;
+	struct JabberBind* bind;
+} JabberClient;
+
+struct JabberBind {
+	list* jabber_connections;
+	hash* sid_hash;
+	SocketMonitor* monitor;
+	HttpServer* server;
+
+    int jabber_port;
+    int session_timeout;
+    int default_request_timeout;
+};
+
+DECLARE_ALLOCATOR(JabberClient, 512);
+IMPLEMENT_ALLOCATOR(JabberClient);
 
 /*! \brief The signal handler */
 void handle_signal(int signal) {
@@ -214,7 +242,7 @@ void jb_close_client(JabberClient* j_client) {
 
     /* free client struct */
     list_delete(j_client->output_queue, _iks_delete);
-    free(j_client);
+    JabberClient_free(j_client);
 }
 
 /*! \brief Check timeouts and handle them */
@@ -314,7 +342,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     int rid;
 
     /* alloc memory */
-    j_client = malloc(sizeof(JabberClient));
+    j_client = JabberClient_alloc();
 
     /* get wait parameter */
     tmp = iks_find_attrib(body, "wait");
@@ -328,7 +356,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     host = iks_find_attrib(body, "to");
     if(host == NULL) {
         log(WARNING, "wrong header");
-        free(j_client);
+        JabberClient_free(j_client);
         iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
         return NULL;
@@ -338,7 +366,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     tmp = iks_find_attrib(body, "rid");
     if(tmp == NULL) {
         log(WARNING, "Wrong header");
-        free(j_client);
+        JabberClient_free(j_client);
         iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
         return NULL;
@@ -349,7 +377,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     parser = jabber_connect(host, bind->jabber_port, j_client, jc_handle_stanza);
     if(parser == NULL) {
         log(ERROR, "could not connect to jabber server");
-        free(j_client);
+        JabberClient_free(j_client);
         iks_delete(body);
         jc_report_error(connection, CONNECTION_FAILED);
         return NULL;
