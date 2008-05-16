@@ -102,7 +102,7 @@ static int compare_sid(const void* s1, const void* s2) {
 }
 
 static unsigned int hash_sid(const void* s) {
-    return (*(const uint64_t*)s) & 0xffffff;
+    return (*(const uint64_t*)s) & 0xffffffff;
 }
 
 /*! \brief Return the time remaning to the closest possible timeout  */
@@ -377,7 +377,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
         jc_report_error(connection, BAD_FORMAT);
         return NULL;
     }
-    scanf(tmp, "%" PRId64, &rid);
+    sscanf(tmp, "%" PRId64, &rid);
 
     /* connect to the jabber server */
     parser = jabber_connect(host, bind->jabber_port, j_client, jc_handle_stanza);
@@ -424,7 +424,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
 }
 
 /*! \brief Find a jabber client by its sid */
-JabberClient* jb_find_jabber(JabberBind* bind, uint64_t sid) {
+JabberClient* jb_find_client(JabberBind* bind, uint64_t sid) {
     return hash_find(bind->sid_hash, &sid);
 }
 
@@ -472,7 +472,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         jb_connect_client(bind, request->connection, message);
     } else {
         /* parse the sid */
-        scanf(tmp, "%" PRId64, &sid);
+        sscanf(tmp, "%" PRId64, &sid);
 
         /* get the rid */
         tmp = iks_find_attrib(message, "rid");
@@ -482,10 +482,10 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
             iks_delete(message);
             return;
         }
-        scanf(tmp, "%" PRId64, &rid);
+        sscanf(tmp, "%" PRId64, &rid);
 
         /* get the client */
-        j_client = jb_find_jabber(bind, sid);
+        j_client = jb_find_client(bind, sid);
         if(j_client == NULL) {
             log(WARNING, "sid not found");
             jc_report_error(request->connection, SID_NOT_FOUND);
