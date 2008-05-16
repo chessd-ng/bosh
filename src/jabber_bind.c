@@ -26,6 +26,8 @@
 
 #include <signal.h>
 
+#include <inttypes.h>
+
 #include "http_server.h"
 #include "jabber_bind.h"
 #include "jabber.h"
@@ -42,7 +44,7 @@
 
 #define EMPTY_RESPONSE "<body xmlns='http://jabber.org/protocol/httpbind'/>"
 
-#define SESSION_RESPONSE "<body sid='%d' ver='1.6' xmlns='http://jabber.org/protocol/httpbind'/>"
+#define SESSION_RESPONSE "<body sid='%" PRId64 "' ver='1.6' xmlns='http://jabber.org/protocol/httpbind'/>"
 
 #define TERMINATE_SESSIN_RESPONSE "<body type='terminate' xmlns='http://jabber.org/protocol/httpbind'/>"
 
@@ -65,7 +67,7 @@ volatile int running;
 typedef struct JabberClient {
     iksparser* parser;
     int socket_fd;
-    int sid, rid;
+    uint64_t sid, rid;
     HttpConnection* connection;
     list* output_queue;
     int alive;
@@ -96,11 +98,11 @@ void handle_signal(int signal) {
 }
 
 static int compare_sid(const void* s1, const void* s2) {
-    return *(const int*)s1 == *(const int*)s2;
+    return *(const uint64_t*)s1 == *(const uint64_t*)s2;
 }
 
 static unsigned int hash_sid(const void* s) {
-    return *(const int*)s;
+    return (*(const uint64_t*)s) & 0xffffff;
 }
 
 /*! \brief Return the time remaning to the closest possible timeout  */
@@ -217,7 +219,7 @@ static void _iks_delete(void* _iks) {
 void jb_close_client(JabberClient* j_client) {
     JabberBind* bind = j_client->bind;
 
-    log(INFO, "sid = %d", j_client->sid);
+    log(INFO, "sid = %" PRId64, j_client->sid);
 
     /* drop the request if we have one */
     if(j_client->connection != NULL) {
@@ -267,7 +269,7 @@ void jb_check_timeout(JabberBind* bind) {
             jc_drop_request(j_client, 0);
         } else if(j_client->connection == NULL && idle >= bind->session_timeout) {
             /* close the conenction if the session timedout due to innactivity */
-            log(INFO, "timeout on sid = %d", j_client->sid);
+            log(INFO, "timeout on sid = %" PRId64, j_client->sid);
             list_push_back(to_close, j_client);
         }
     }
@@ -332,6 +334,10 @@ void jc_report_error(HttpConnection* connection, enum BIND_ERROR_CODE code) {
     free(body);
 }
 
+uint64_t gen_sid() {
+    return lrand48() | (((uint64_t)lrand48())<<32);
+}
+
 /*! \brief Create a new connection to the jabber server */
 JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, iks* body) {
     char* tmp;
@@ -339,7 +345,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     char* bind_body;
     iksparser* parser;
     JabberClient* j_client;
-    int rid;
+    uint64_t rid;
 
     /* alloc memory */
     j_client = JabberClient_alloc();
@@ -371,7 +377,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
         jc_report_error(connection, BAD_FORMAT);
         return NULL;
     }
-    rid = atoi(tmp);
+    scanf(tmp, "%" PRId64, &rid);
 
     /* connect to the jabber server */
     parser = jabber_connect(host, bind->jabber_port, j_client, jc_handle_stanza);
@@ -387,7 +393,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
 
     /* pick a random sid */
     do {
-        j_client->sid = lrand48();
+        j_client->sid = gen_sid();
     } while(hash_has_key(bind->sid_hash, &j_client->sid));
 
     /* insert the sid value into the hash */
@@ -418,12 +424,12 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
 }
 
 /*! \brief Find a jabber client by its sid */
-JabberClient* jb_find_jabber(JabberBind* bind, int sid) {
+JabberClient* jb_find_jabber(JabberBind* bind, uint64_t sid) {
     return hash_find(bind->sid_hash, &sid);
 }
 
 /*! \brief Set the client request */
-void jc_set_http(JabberClient* j_client, HttpConnection* connection, int rid) {
+void jc_set_http(JabberClient* j_client, HttpConnection* connection, uint64_t rid) {
     /* if we already have one, drop it */
     if(j_client->connection != NULL) {
         jc_drop_request(j_client, 0);
@@ -444,7 +450,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
     JabberClient* j_client;
     iks* message, *stanza;
     char* tmp;
-    int sid, rid;
+    uint64_t sid, rid;
 
     bind = _bind;
 
@@ -465,7 +471,8 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         /* if there is no sid, than it is a request to create a connection */
         jb_connect_client(bind, request->connection, message);
     } else {
-        sid = atoi(tmp);
+        /* parse the sid */
+        scanf(tmp, "%" PRId64, &sid);
 
         /* get the rid */
         tmp = iks_find_attrib(message, "rid");
@@ -475,7 +482,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
             iks_delete(message);
             return;
         }
-        rid = atoi(tmp);
+        scanf(tmp, "%" PRId64, &rid);
 
         /* get the client */
         j_client = jb_find_jabber(bind, sid);
