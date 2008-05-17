@@ -49,16 +49,18 @@ static int cmp_int(const void* i1, const void* i2) {
 	return *(const int*)i1 == *(const int*)i2;
 }
 
+IMPLEMENT_HASH(socket, hash_int, cmp_int);
+
 SocketMonitor* sm_new() {
     SocketMonitor* monitor = malloc(sizeof(SocketMonitor));
     monitor->n_clients = 0;
-	monitor->socket_hash = hash_new(hash_int, cmp_int);
+	monitor->socket_hash = socket_hash_new();
 	monitor->clients = list_new();
     return monitor;
 }
 
 void sm_delete(SocketMonitor* monitor) {
-	hash_delete(monitor->socket_hash);
+	socket_hash_delete(monitor->socket_hash);
 	list_delete(monitor->clients, free);
     free(monitor);
 }
@@ -88,14 +90,14 @@ void sm_add_socket(SocketMonitor* monitor, int socket_fd, Callback callback, voi
 
 
     /* insert socket to the socket hash */
-	hash_insert(monitor->socket_hash, &si->socket_fd, si);
+	socket_hash_insert(monitor->socket_hash, &si->socket_fd, si);
 }
 
 void sm_replace_socket(SocketMonitor* monitor, int socket_fd, Callback callback, void* user_data) {
 	SocketInfo* si;
 
     /* find socket */
-	si = hash_find(monitor->socket_hash, &socket_fd);
+	si = socket_hash_find(monitor->socket_hash, &socket_fd);
     
 	/* replace callback */
     si->callback = callback;
@@ -107,7 +109,7 @@ void sm_remove_socket(SocketMonitor* monitor, int socket_fd) {
     int id, old_id;
 
     /* erase the socket from the hash and the list */
-	si = hash_erase(monitor->socket_hash, &socket_fd);
+	si = socket_hash_erase(monitor->socket_hash, &socket_fd);
 	id = si->id;
 	list_erase(si->it);
 	free(si);
@@ -117,7 +119,7 @@ void sm_remove_socket(SocketMonitor* monitor, int socket_fd) {
 	old_id = monitor->n_clients;
 	if(old_id != id) {
         monitor->poll_list[id] = monitor->poll_list[old_id];
-		si = hash_find(monitor->socket_hash, &monitor->poll_list[id]);
+		si = socket_hash_find(monitor->socket_hash, &monitor->poll_list[id]);
 		si->id = id;
 	}
 }
@@ -136,7 +138,7 @@ void sm_poll(SocketMonitor* monitor, time_type max_time) {
             /* this is not really bad, because the socket that replaces the erased
              * will be processes later */
 			if((monitor->poll_list[i].revents & POLLIN) != 0) {
-				si = hash_find(monitor->socket_hash, &monitor->poll_list[i].fd);
+				si = socket_hash_find(monitor->socket_hash, &monitor->poll_list[i].fd);
 				si->callback(si->user_data);
 			}
 		}

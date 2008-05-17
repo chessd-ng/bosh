@@ -77,9 +77,10 @@ typedef struct JabberClient {
 	struct JabberBind* bind;
 } JabberClient;
 
+
 struct JabberBind {
 	list* jabber_connections;
-	hash* sid_hash;
+	hash* sids;
 	SocketMonitor* monitor;
 	HttpServer* server;
 
@@ -104,6 +105,8 @@ static int compare_sid(const void* s1, const void* s2) {
 static unsigned int hash_sid(const void* s) {
     return (*(const uint64_t*)s) & 0xffffffff;
 }
+
+IMPLEMENT_HASH(sid, hash_sid, compare_sid);
 
 /*! \brief Return the time remaning to the closest possible timeout  */
 time_type jb_closest_timeout(JabberBind* bind) {
@@ -240,7 +243,7 @@ void jb_close_client(JabberClient* j_client) {
     list_erase(j_client->it);
 
     /* erase the client's sid */
-    hash_erase(bind->sid_hash, &j_client->sid);
+    sid_hash_erase(bind->sids, &j_client->sid);
 
     /* free client struct */
     list_delete(j_client->output_queue, _iks_delete);
@@ -394,10 +397,10 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     /* pick a random sid */
     do {
         j_client->sid = gen_sid();
-    } while(hash_has_key(bind->sid_hash, &j_client->sid));
+    } while(sid_hash_has_key(bind->sids, &j_client->sid));
 
     /* insert the sid value into the hash */
-    hash_insert(bind->sid_hash, &j_client->sid, j_client);
+    sid_hash_insert(bind->sids, &j_client->sid, j_client);
 
     /* init client values */
     j_client->parser = parser;
@@ -425,7 +428,7 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
 
 /*! \brief Find a jabber client by its sid */
 JabberClient* jb_find_client(JabberBind* bind, uint64_t sid) {
-    return hash_find(bind->sid_hash, &sid);
+    return sid_hash_find(bind->sids, &sid);
 }
 
 /*! \brief Set the client request */
@@ -619,7 +622,7 @@ JabberBind* jb_new(iks* config) {
 
     /* set other values */
     jb->jabber_connections = list_new();
-    jb->sid_hash = hash_new(hash_sid, compare_sid);
+    jb->sids = sid_hash_new();
 
     /* seed the random generator */
     srand48(get_time());
@@ -639,7 +642,7 @@ void jb_delete(JabberBind* bind) {
 
     /* free all data structures */
     list_delete(bind->jabber_connections, NULL);
-    hash_delete(bind->sid_hash);
+    sid_hash_delete(bind->sids);
 
     /* delete the http server */
     hs_delete(bind->server);
