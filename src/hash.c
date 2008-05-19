@@ -18,7 +18,3 @@
 
 #include "hash.h"
 
-IMPLEMENT_ALLOCATOR(_hash_node);
-
-IMPLEMENT_ALLOCATOR(hash);
-

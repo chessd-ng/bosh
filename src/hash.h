@@ -22,26 +22,7 @@
 
 #include "allocator.h"
 
-typedef void (*hash_callback)(const void*, void*);
-
-/*! \brief A node of the hash table */
-typedef struct _hash_node {
-    void* key;
-    void* value;
-    struct _hash_node* next;
-} _hash_node;
-
-/*! \brief The hash table */
-typedef struct hash {
-    _hash_node* table;
-    size_t table_size;
-    size_t element_count;
-} hash;
-
-DECLARE_ALLOCATOR(_hash_node, 4096);
-DECLARE_ALLOCATOR(hash, 32);
-
-/* borrowed from g++ hash implementation */
+/* borrowed from g++ key_type##_hash implementation */
 static const size_t prime_numbers[] = {
     53ul,         97ul,         193ul,        389ul,       769ul,
     1543ul,       3079ul,       6151ul,       12289ul,     24593ul,
@@ -51,26 +32,52 @@ static const size_t prime_numbers[] = {
     1610612741ul, 3221225473ul, 4294967291ul
 };
 
-#define IMPLEMENT_HASH(prefix, hash_function, compare_function)             \
+#define IMPLEMENT_HASH(key_type)                                            \
+                                                                            \
+IMPLEMENT_ALLOCATOR(_##key_type##_hash_node);                               \
+IMPLEMENT_ALLOCATOR(key_type##_hash);
+
+
+
+#define DECLARE_HASH(key_type, hash_function, compare_function)             \
+                                                                            \
+typedef void (*key_type##_hash_callback)(const key_type, void*);            \
+                                                                            \
+/*! \brief A node of the key_type##_hash table */                           \
+typedef struct _##key_type##_hash_node {                                    \
+    key_type key;                                                           \
+    void* value;                                                            \
+    struct _##key_type##_hash_node* next;                                   \
+} _##key_type##_hash_node;                                                  \
+                                                                            \
+/*! \brief The key_type##_hash table */                                     \
+typedef struct key_type##_hash {                                            \
+    _##key_type##_hash_node* table;                                         \
+    size_t table_size;                                                      \
+    size_t element_count;                                                   \
+} key_type##_hash;                                                          \
+                                                                            \
+DECLARE_ALLOCATOR(_##key_type##_hash_node, 4096);                           \
+DECLARE_ALLOCATOR(key_type##_hash, 32);                                     \
                                                                             \
 /*! \brief Creates a new hash table. */                                     \
-static inline hash* prefix##_hash_new() {                                   \
-    hash* h;                                                                \
+static inline key_type##_hash* key_type##_hash_new() {                      \
+    key_type##_hash* h;                                                     \
                                                                             \
-    h = hash_alloc();                                                       \
+    h = key_type##_hash_alloc();                                            \
                                                                             \
     h->element_count = 0;                                                   \
     h->table_size = prime_numbers[0];                                       \
                                                                             \
-    /* I'm using a dummy head node for each list */                         \
-    h->table = calloc(h->table_size, sizeof(_hash_node));                   \
+    h->table = calloc(h->table_size, sizeof(_##key_type##_hash_node));      \
                                                                             \
     return h;                                                               \
 }                                                                           \
                                                                             \
-/*! \brief Insert a node to the hash and don't resize the table. */         \
-static inline void _##prefix##_hash_insert_noresize(hash* h,                \
-                                                   _hash_node* node) {      \
+/*! \brief Insert a node to the _hash and don't resize the table. */        \
+static inline void _##key_type##_hash_insert_noresize                       \
+        (key_type##_hash* h,                                                \
+         _##key_type##_hash_node* node) {                                   \
     size_t hash_pos;                                                        \
                                                                             \
     hash_pos = hash_function(node->key) % h->table_size;                    \
@@ -80,10 +87,10 @@ static inline void _##prefix##_hash_insert_noresize(hash* h,                \
 }                                                                           \
                                                                             \
 /*! \brief Resize the table if necessary. */                                \
-static inline void _##prefix##_hash_resize(hash* h) {                       \
-    _hash_node* old_table;                                                  \
+static inline void _##key_type##_hash_resize(key_type##_hash* h) {          \
+    _##key_type##_hash_node* old_table;                                     \
     size_t old_size;                                                        \
-    _hash_node* node;                                                       \
+    _##key_type##_hash_node* node;                                          \
     int i;                                                                  \
                                                                             \
     if(h->table_size < h->element_count) {                                  \
@@ -93,37 +100,38 @@ static inline void _##prefix##_hash_resize(hash* h) {                       \
         for(i = 0; prime_numbers[i] < h->element_count; ++i) ;              \
                                                                             \
         h->table_size = prime_numbers[i];                                   \
-        h->table = calloc(h->table_size, sizeof(_hash_node));               \
+        h->table = calloc(h->table_size, sizeof(_##key_type##_hash_node));  \
                                                                             \
         for(i = 0; i < old_size; ++i) {                                     \
             while(old_table[i].next != NULL) {                              \
                 node = old_table[i].next;                                   \
                 old_table[i].next = node->next;                             \
-                _##prefix##_hash_insert_noresize(h, node);                  \
+                _##key_type##_hash_insert_noresize(h, node);                \
             }                                                               \
         }                                                                   \
         free(old_table);                                                    \
     }                                                                       \
 }                                                                           \
                                                                             \
-/*! \brief Insert a new item to the hash.                                   \
+/*! \brief Insert a new item to the key_type##_hash.                        \
  *                                                                          \
  * \note This function does not check for repeated keys,                    \
  *      so if the already exists it will keep both elements.                \
  */                                                                         \
-static inline void prefix##_hash_insert(hash* h, void* key, void* value) {  \
-    _hash_node* node;                                                       \
+static inline void key_type##_hash_insert                                   \
+        (key_type##_hash* h, key_type key, void* value) {                   \
+    _##key_type##_hash_node* node;                                          \
                                                                             \
-    node = _hash_node_alloc();                                              \
+    node = _##key_type##_hash_node_alloc();                                 \
     node->key = key;                                                        \
     node->value = value;                                                    \
     node->next = NULL;                                                      \
                                                                             \
                                                                             \
-    _##prefix##_hash_insert_noresize(h, node);                              \
+    _##key_type##_hash_insert_noresize(h, node);                            \
     h->element_count ++;                                                    \
                                                                             \
-    _##prefix##_hash_resize(h);                                             \
+    _##key_type##_hash_resize(h);                                           \
 }                                                                           \
                                                                             \
 /*! \brief Find a node in the table by its key                              \
@@ -131,9 +139,9 @@ static inline void prefix##_hash_insert(hash* h, void* key, void* value) {  \
  * \return Returns the node whose next node has the                         \
  *          requested key or NULL if the key is not found.                  \
  * */                                                                       \
-static inline _hash_node* _##prefix##_hash_find_prev_node(hash* h,          \
-                                                          void* key) {      \
-    _hash_node* node;                                                       \
+static inline _##key_type##_hash_node*                                      \
+_##key_type##_hash_find_prev_node(key_type##_hash* h, key_type key) {       \
+    _##key_type##_hash_node* node;                                          \
     size_t hash_pos;                                                        \
                                                                             \
     hash_pos = hash_function(key) % h->table_size;                          \
@@ -151,18 +159,19 @@ static inline _hash_node* _##prefix##_hash_find_prev_node(hash* h,          \
  *                                                                          \
  * \return Returns the node's value.                                        \
  * */                                                                       \
-static inline void* _##prefix##_hash_erase_next_node(hash* h,               \
-                                                    _hash_node* node) {     \
-    _hash_node* erased_node;                                                \
+static inline void*                                                         \
+_##key_type##_hash_erase_next_node(key_type##_hash* h,                      \
+                                   _##key_type##_hash_node* node) {         \
+    _##key_type##_hash_node* erased_node;                                   \
     void* value;                                                            \
                                                                             \
     erased_node = node->next;                                               \
     node->next = erased_node->next;                                         \
     value = erased_node->value;                                             \
                                                                             \
-    _hash_node_free(erased_node);                                           \
+    _##key_type##_hash_node_free(erased_node);                              \
                                                                             \
-    h->element_count --;                                                    \
+    h->element_count--;                                                     \
                                                                             \
     return value;                                                           \
 }                                                                           \
@@ -171,10 +180,10 @@ static inline void* _##prefix##_hash_erase_next_node(hash* h,               \
  *                                                                          \
  * \return Returns the value or NULL if the key was not found               \
  */                                                                         \
-static inline void* prefix##_hash_find(hash* h, void* key) {                \
-    _hash_node* node;                                                       \
+static inline void* key_type##_hash_find(key_type##_hash* h, key_type key) {\
+    _##key_type##_hash_node* node;                                          \
                                                                             \
-    node = _##prefix##_hash_find_prev_node(h, key);                         \
+    node = _##key_type##_hash_find_prev_node(h, key);                       \
                                                                             \
     if(node == NULL) {                                                      \
         return NULL;                                                        \
@@ -188,43 +197,45 @@ static inline void* prefix##_hash_find(hash* h, void* key) {                \
  * \returns Returns the value of the erased element                         \
  *      or NULL if the key was not found                                    \
  */                                                                         \
-static inline void* prefix##_hash_erase(hash* h, void* key) {               \
-    _hash_node* node;                                                       \
+static inline void* key_type##_hash_erase(key_type##_hash* h,               \
+                                          key_type key) {                   \
+    _##key_type##_hash_node* node;                                          \
                                                                             \
-    node = _##prefix##_hash_find_prev_node(h, key);                         \
+    node = _##key_type##_hash_find_prev_node(h, key);                       \
                                                                             \
     if(node == NULL) {                                                      \
         return NULL;                                                        \
     } else  {                                                               \
-        return _##prefix##_hash_erase_next_node(h, node);                   \
+        return _##key_type##_hash_erase_next_node(h, node);                 \
     }                                                                       \
 }                                                                           \
                                                                             \
 /*! \brief Erase all elements of table */                                   \
-static inline void prefix##_hash_clear(hash* h) {                           \
+static inline void key_type##_hash_clear(key_type##_hash* h) {              \
     int i;                                                                  \
                                                                             \
     for(i = 0; i < h->table_size; ++i) {                                    \
         while(h->table[i].next != NULL) {                                   \
-            _##prefix##_hash_erase_next_node(h, &h->table[i]);              \
+            _##key_type##_hash_erase_next_node(h, &h->table[i]);            \
         }                                                                   \
     }                                                                       \
 }                                                                           \
                                                                             \
 /*! \bief Delete a hash table */                                            \
-static inline void prefix##_hash_delete(hash* h) {                          \
-    prefix##_hash_clear(h);                                                 \
+static inline void key_type##_hash_delete(key_type##_hash* h) {             \
+    key_type##_hash_clear(h);                                               \
     free(h->table);                                                         \
-    hash_free(h);                                                           \
+    key_type##_hash_free(h);                                                \
 }                                                                           \
                                                                             \
 /*! \brief Ask if the table contain a given key. */                         \
-static inline int prefix##_hash_has_key(hash* h, void* key) {               \
-    return prefix##_hash_find(h, key) != NULL;                              \
+static inline int key_type##_hash_has_key(key_type##_hash* h,               \
+                                          key_type key) {                   \
+    return key_type##_hash_find(h, key) != NULL;                            \
 }                                                                           \
                                                                             \
 /*! \brief The size of the table */                                         \
-static inline size_t prefix##_hash_size(hash* h) {                          \
+static inline size_t key_type##_hash_size(key_type##_hash* h) {             \
     return h->element_count;                                                \
 }                                                                           \
                                                                             \
@@ -232,23 +243,23 @@ static inline size_t prefix##_hash_size(hash* h) {                          \
 /*! \brief Insert a element or replace an elemente if the already exists    \
  *                                                                          \
  * \return Returns the value of the                                         \
- *      eplaced element or NULL if the key didn't exist.                    \
+ *      replaced element or NULL if the key didn't exist.                   \
  */                                                                         \
-static inline void* prefix##_hash_insert_replace(hash* h, void* key,        \
-                                                 void* value) {             \
-    _hash_node* node;                                                       \
+static inline void*                                                         \
+key_type##_hash_insert_replace(key_type##_hash* h, key_type key,            \
+                               void* value) {                               \
+    _##key_type##_hash_node* node;                                          \
     void* v;                                                                \
                                                                             \
-    node = _##prefix##_hash_find_prev_node(h, key);                         \
+    node = _##key_type##_hash_find_prev_node(h, key);                       \
     if(node == NULL) {                                                      \
         v = NULL;                                                           \
-        prefix##_hash_insert(h, key, value);                                \
+        key_type##_hash_insert(h, key, value);                              \
     } else {                                                                \
         node = node->next;                                                  \
         v = node->value;                                                    \
         node->value = value;                                                \
-        /* FIXME */                                                         \
-        /* node->key = key */                                               \
+        node->key = key;                                                    \
     }                                                                       \
                                                                             \
     return v;                                                               \
@@ -258,9 +269,11 @@ static inline void* prefix##_hash_insert_replace(hash* h, void* key,        \
  *                                                                          \
  * The function callback is called for every element in the table           \
  */                                                                         \
-static inline void prefix##_hash_iterate(hash* h, hash_callback callback) { \
+static inline void                                                          \
+key_type##_hash_iterate(key_type##_hash* h,                                 \
+                        key_type##_hash_callback callback) {                \
     int i;                                                                  \
-    _hash_node* node;                                                       \
+    _##key_type##_hash_node* node;                                          \
                                                                             \
     for(i = 0; i < h->table_size; ++i) {                                    \
         for(node = h->table[i].next; node != NULL; node = node->next) {     \

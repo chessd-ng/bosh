@@ -26,8 +26,6 @@
 #include "hash.h"
 #include "list.h"
 
-#define MAX_CLIENTS (1024*16)
-
 typedef void (*Callback)(void* user_data);
 
 struct SocketMonitor;

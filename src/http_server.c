@@ -62,7 +62,7 @@ struct HttpServer {
 	void* user_data;
 };
 
-DECLARE_ALLOCATOR(HttpConnection, 16);
+DECLARE_ALLOCATOR(HttpConnection, 1);
 IMPLEMENT_ALLOCATOR(HttpConnection);
 
 /*! \brief Send an http error response */
