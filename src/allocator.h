@@ -13,6 +13,7 @@
  * free'ing it.
  * */
 
+#define ALLOCATOR_BLOCK_SIZE 4096
 
 #define IMPLEMENT_ALLOCATOR(type)                                           \
     _##type##_allocator_node* _##type##_allocator_buffer = NULL;
@@ -21,7 +22,7 @@
     typedef struct _##type##_allocator_node {                               \
         struct _##type##_allocator_node *next, *prev;                       \
         size_t size;                                                        \
-        type* objs[alloc_step];                                             \
+        type* objs[ALLOCATOR_BLOCK_SIZE];                                   \
     } _##type##_allocator_node;                                             \
     extern _##type##_allocator_node* _##type##_allocator_buffer;            \
     static inline type* type##_alloc() {                                    \
@@ -55,10 +56,10 @@
                                                                             \
     static inline void type##_free(type* obj) {                             \
         /* check if the buffer is full */                                   \
-        if(_##type##_allocator_buffer->size == (alloc_step)) {              \
+        if(_##type##_allocator_buffer->size == (ALLOCATOR_BLOCK_SIZE)) {    \
             /* go foward on the stack to see if the is any empty space */   \
             _##type##_allocator_buffer = _##type##_allocator_buffer->next;  \
-            if(_##type##_allocator_buffer->size == (alloc_step)) {          \
+            if(_##type##_allocator_buffer->size == (ALLOCATOR_BLOCK_SIZE)) {\
                 _##type##_allocator_node* node =                            \
                     malloc(sizeof(_##type##_allocator_node));               \
                 node->next = _##type##_allocator_buffer;                    \
