@@ -6,11 +6,14 @@ Note that is is still in development and it is unstable, use it at your
 own risk.
 Suggestion, bug reports and contributions are all welcome.
 
-----------------
+--- Compilling bosh ---
 
 To compile this code you need the following libraries:
 
 - iksemel >= 1.2
+
+You can edit the file makefile.config to set some flags passed
+to the compiler if you need. Then just hit make.
 
 --- Setting up the web server ---
 
@@ -32,8 +35,5 @@ You must enable the proxy module too, if it isn't already.
 The only requirement is that you set the port that the
 bosh must listen to by editing the config.xml.
 The other options can be left unmodified.
-Note that there a log file, be carefull that this
-file tend to be big and mostly useful for
-the developers, so you can set it to /dev/null.
 
 Now we are done, just run the bosh.

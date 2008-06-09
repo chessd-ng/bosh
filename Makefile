@@ -1,27 +1,29 @@
-SOURCES = \
-	src/hash.c \
-	src/http.c \
-	src/http_server.c \
-	src/jabber_bind.c \
-	src/jabber.c \
-	src/log.c \
-	src/main.c \
-	src/socket_monitor.c \
-	src/socket_util.c \
-	src/time.c \
-	src/list.c
-		  
+CONFIG ?= makefile.config
+
+-include ${CONFIG}
+
+SOURCES += src/hash.c
+SOURCES += 	src/http.c
+SOURCES += 	src/http_server.c
+SOURCES += 	src/jabber_bind.c
+SOURCES += src/jabber.c
+SOURCES += src/log.c
+SOURCES += src/main.c
+SOURCES += src/socket_monitor.c
+SOURCES += src/socket_util.c
+SOURCES += src/time.c
+SOURCES += src/list.c
+
 SRCDIR = src
 OBJDIR = obj
 DEPSDIR = .deps
-CFLAGS = -Wall -D_GNU_SOURCE $(shell pkg-config iksemel --cflags)
-#CFLAGS += -O3 -fomit-frame-pointer -funroll-loops -march=native
-CFLAGS += -ggdb3
-CXXFLAGS = ${CFLAGS}
-LDLIBS = -I${HOME}/.usr/lib -lrt $(shell pkg-config iksemel --libs)
-TARGET = bosh
-CC=gcc
-CXX=g++
+CFLAGS += -Wall -D_GNU_SOURCE $(shell pkg-config iksemel --cflags)
+CXXFLAGS += ${CFLAGS}
+LDLIBS += -I${HOME}/.usr/lib -lrt $(shell pkg-config iksemel --libs)
+TARGET ?= bosh
+
+CC ?= gcc
+CXX ?= g++
 
 OBJECTS = $(patsubst ${SRCDIR}/%.c,${OBJDIR}/%.o,${SOURCES})
 DEPS = $(patsubst ${SRCDIR}/%.c,${DEPSDIR}/%.d,${SOURCES})
