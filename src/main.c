@@ -19,8 +19,12 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
 
 #include <iksemel.h>
+
 
 #include "jabber_bind.h"
 
@@ -31,10 +35,17 @@ int main(int argc, char** argv) {
     char* config_file;
 
     config_file = (argc<2) ? "config.xml" : argv[1];
+
+    /* check if it is ok ti read the file */
+    if(access(config_file, R_OK) != 0) {
+        fprintf(stderr, "Could not read %s: %s.\n", config_file, strerror(errno));
+        return 1;
+    }
+
     ret = iks_load(config_file, &config);
 
     if(ret != IKS_OK) {
-        fprintf(stderr, "Could not load %s.\n", config_file);
+        fprintf(stderr, "Could not parse %s.\n", config_file);
         return 1;
     }
 
