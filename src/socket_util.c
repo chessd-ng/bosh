@@ -31,23 +31,29 @@
 /*! \brief Create a socket to listen a port */
 int listen_socket(int port) {
 
-    int socket_fd;
+    int socket_fd, opt;
     struct sockaddr_in addr_in;
 
+    /* create the socket */
     if((socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("listen_socket");
         return -1;
     }
 
+    /* set REUSEADDR so we can restart bosh quickly */
+    opt = 1;
+    setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (void*)&opt, sizeof(opt));
+
+    /* bind to the port */
     addr_in.sin_family=AF_INET;
     addr_in.sin_port=htons(port);
     addr_in.sin_addr.s_addr=INADDR_ANY;
-
     if(bind(socket_fd, (struct sockaddr*) &addr_in, sizeof(addr_in)) < 0) {
         perror("listen_socket");
         return -1;
     }
 
+    /* start listening */
     if(listen(socket_fd, 1024) == -1 ) {
         perror("listen_socket");
         return -1;

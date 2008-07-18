@@ -28,11 +28,13 @@
 
 #include <inttypes.h>
 
+#include <iksemel.h>
+
 #include "http_server.h"
 #include "jabber_bind.h"
-#include "jabber.h"
 #include "log.h"
 #include "allocator.h"
+#include "socket_util.h"
 
 #define JABBER_PORT 5222
 
@@ -40,13 +42,15 @@
 
 #define DEFAULT_REQUEST_TIMEOUT (30000)
 
-#define MESSAGE_WRAPPER "<body xmlns='http://jabber.org/protocol/httpbind'>%s</body>"
+#define JABBER_HEADER "<stream:stream xmlns='jabber:client' version='1.0' xmlns:stream='http://etherx.jabber.org/streams' to='%s' xml:lang='en'>"
+
+#define MESSAGE_WRAPPER "<body xmlns:stream='http://etherx.jabber.org/streams' xmlns='http://jabber.org/protocol/httpbind'>%s</body>"
 
 #define EMPTY_RESPONSE "<body xmlns='http://jabber.org/protocol/httpbind'/>"
 
 #define SESSION_RESPONSE "<body sid='%" PRId64 "' ver='1.6' xmlns='http://jabber.org/protocol/httpbind'/>"
 
-#define TERMINATE_SESSIN_RESPONSE "<body type='terminate' xmlns='http://jabber.org/protocol/httpbind'/>"
+#define TERMINATE_SESSION_RESPONSE "<body type='terminate' xmlns='http://jabber.org/protocol/httpbind'/>"
 
 #define ERROR_RESPONSE "<body type='%s' condition='%s' xmlns='http://jabber.org/protocol/httpbind'/>"
 
@@ -57,7 +61,7 @@ static int compare_sid(uint64_t s1, uint64_t s2) {
 }
 
 static unsigned int hash_sid(uint64_t s) {
-    return s & 0xffffffff;
+    return s % 4294967291ul;
 }
 
 DECLARE_HASH(uint64, hash_sid, compare_sid);
@@ -199,7 +203,7 @@ void jc_drop_request(JabberClient* j_client, int terminate) {
     char* body;
 
     if(terminate) {
-        asprintf(&body, TERMINATE_SESSIN_RESPONSE);
+        asprintf(&body, TERMINATE_SESSION_RESPONSE);
     } else {
         asprintf(&body, EMPTY_RESPONSE);
     }
@@ -239,7 +243,7 @@ void jb_close_client(JabberClient* j_client) {
     iks_disconnect(j_client->parser);
     iks_parser_delete(j_client->parser);
 
-    /* clsoe the socket */
+    /* close the socket */
     close(j_client->socket_fd);
 
     /* erase the client from the list of clients */
@@ -344,6 +348,32 @@ uint64_t gen_sid() {
     return lrand48() | (((uint64_t)lrand48())<<32);
 }
 
+/*" \breif Connect to the jabber server */
+iksparser* jabber_connect(const char* host_addr, int port, void *user_data, iksStreamHook callback) {
+	int socket_fd;
+	iksparser* parser;
+	char* tmp;
+
+    /* connect to the host */
+	socket_fd = connect_socket(host_addr, port);
+	if(socket_fd == -1) {
+		return NULL;
+	}
+	
+    /* create the parser */
+	parser = iks_stream_new("jabber:client", user_data, callback);
+
+    /* set the parser fd */
+	iks_connect_fd(parser, socket_fd);
+	
+    /* send header */
+	asprintf(&tmp, JABBER_HEADER, host_addr);
+    send(socket_fd, tmp, strlen(tmp), 0);
+	free(tmp);
+
+	return parser;
+
+}
 /*! \brief Create a new connection to the jabber server */
 JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, iks* body) {
     char* tmp;
