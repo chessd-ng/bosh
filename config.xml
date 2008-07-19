@@ -7,6 +7,10 @@
     <http_server
         port='8082'
     />
-    <log filename='log/bosh.log'
-         verbose='ERROR'/>
+    <log
+        filename='log/bosh.log'
+        verbose='INFO'
+        rotate_size='200m'
+        compression_command='nice -n 19 bzip2'
+        />
 </jbind>

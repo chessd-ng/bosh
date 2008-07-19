@@ -54,16 +54,16 @@
 
 #define ERROR_RESPONSE "<body type='%s' condition='%s' xmlns='http://jabber.org/protocol/httpbind'/>"
 
-typedef uint64_t uint64;
 
 static int compare_sid(uint64_t s1, uint64_t s2) {
     return s1 == s2;
 }
 
 static unsigned int hash_sid(uint64_t s) {
-    return s % 4294967291ul;
+    return s & 0xffffffff;
 }
 
+typedef uint64_t uint64;
 DECLARE_HASH(uint64, hash_sid, compare_sid);
 IMPLEMENT_HASH(uint64);
 
@@ -584,7 +584,6 @@ JabberBind* jb_new(iks* config) {
     iks* http_config;
     iks* log_config;
     const char* str;
-    int i;
 
     jb = malloc(sizeof(JabberBind));
 
@@ -620,25 +619,9 @@ JabberBind* jb_new(iks* config) {
         jb->default_request_timeout = DEFAULT_REQUEST_TIMEOUT;
     }
 
-    /* set log output */
-    if(log_config && (str = iks_find_attrib(log_config, "filename")) != NULL) {
-        log_set_file(str);
-    }
-
-    /* set verbose level */
-    if(log_config && (str = iks_find_attrib(log_config, "verbose")) != NULL) {
-        if(strcmp(str, "ERROR") == 0) {
-            i = ERROR;
-        } else if(strcmp(str, "WARNING") == 0) {
-            i = ERROR;
-        } else if(strcmp(str, "INFO") == 0) {
-            i = INFO;
-        } else if(strcmp(str, "DEBUG") == 0) {
-            i = DEBUG;
-        }  else {
-            i = ERROR;
-        }
-        log_set_verbose(i);
+    /* init log */
+    if(log_config != NULL) {
+        log_init(log_config);
     }
 
     /* create a socket monitor */

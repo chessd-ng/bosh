@@ -20,6 +20,8 @@
 #ifndef LOG_H
 #define LOG_H
 
+#include <iksemel.h>
+
 #define DEBUG 0
 #define INFO 1
 #define WARNING 2
@@ -27,9 +29,7 @@
 
 #define log(level, ...) _log(__func__, level, __VA_ARGS__)
 
-void log_set_file(const char* file_name);
-
-void log_set_verbose(int verbose_level);
+void log_init(iks* config);
 
 void _log(const char* function_name, int level, const char* format, ...);
 

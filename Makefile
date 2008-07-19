@@ -3,10 +3,9 @@ CONFIG ?= makefile.config
 -include ${CONFIG}
 
 SOURCES += src/hash.c
-SOURCES += 	src/http.c
-SOURCES += 	src/http_server.c
-SOURCES += 	src/jabber_bind.c
-SOURCES += src/jabber.c
+SOURCES += src/http.c
+SOURCES += src/http_server.c
+SOURCES += src/jabber_bind.c
 SOURCES += src/log.c
 SOURCES += src/main.c
 SOURCES += src/socket_monitor.c
