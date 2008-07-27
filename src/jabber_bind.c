@@ -60,7 +60,7 @@ static int compare_sid(uint64_t s1, uint64_t s2) {
 }
 
 static unsigned int hash_sid(uint64_t s) {
-    return s & 0xffffffff;
+    return s % 4294967291;
 }
 
 typedef uint64_t uint64;

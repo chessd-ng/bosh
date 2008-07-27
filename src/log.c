@@ -29,6 +29,13 @@
 
 #include "log.h"
 
+const char VERBOSE_LEVEL_NAME[][64] = {
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR"
+};
+
 struct {
     char* filename;
     FILE* file;
@@ -36,13 +43,6 @@ struct {
     char* compression_command;
     int level;
 } log_conf = {NULL, NULL, 0, NULL, ERROR};
-
-const char VERBOSE_LEVEL_NAME[][64] = {
-    "DEBUG",
-    "INFO",
-    "WARNING",
-    "ERROR"
-};
 
 void log_set_file(const char* filename) {
     log_conf.filename = NULL;
@@ -56,6 +56,7 @@ void log_set_file(const char* filename) {
         log_conf.file = fopen(filename, "aw");
         if(log_conf.file == NULL) {
             fprintf(stderr, "Could not open %s: %s\n", filename, strerror(errno));
+            log_conf.file = stdout;
         } else {
             /* store the filename */
             log_conf.filename = strdup(filename);
@@ -96,7 +97,9 @@ void log_set_rotate(const char* rotate_size, const char* rotate_command) {
 }
 
 void log_set_verbose(const char* level) {
-    if(strcmp(level, "ERROR") == 0) {
+    if(level == NULL) {
+        log_conf.level = ERROR;
+    } else if(strcmp(level, "ERROR") == 0) {
         log_conf.level = ERROR;
     } else if(strcmp(level, "WARNING") == 0) {
         log_conf.level = WARNING;
@@ -104,7 +107,7 @@ void log_set_verbose(const char* level) {
         log_conf.level = INFO;
     } else if(strcmp(level, "DEBUG") == 0) {
         log_conf.level = DEBUG;
-    }  else {
+    } else {
         log_conf.level = ERROR;
     }
 }
