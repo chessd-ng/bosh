@@ -169,7 +169,7 @@ void _log(const char* function_name, int level, const char* format, ...) {
     char time_str[512];
 
     /* check verbosity level */
-    if(level < log_conf.level) {
+    if(level > log_conf.level) {
         return;
     }
 

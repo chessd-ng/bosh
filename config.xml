@@ -9,7 +9,7 @@
     />
     <log
         filename='log/bosh.log'
-        verbose='INFO'
+        verbose='ERROR'
         rotate_size='200m'
         compression_command='nice -n 19 bzip2'
         />

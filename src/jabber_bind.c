@@ -42,7 +42,8 @@
 
 #define DEFAULT_REQUEST_TIMEOUT (30000)
 
-#define JABBER_HEADER "<stream:stream xmlns='jabber:client' version='1.0' xmlns:stream='http://etherx.jabber.org/streams' to='%s' xml:lang='en'>"
+#define JABBER_HEADER "<stream:stream xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' to='%s' xml:lang='en'>"
+//#define JABBER_HEADER "<stream:stream xmlns='jabber:client' version='1.0' xmlns:stream='http://etherx.jabber.org/streams' to='%s' xml:lang='en'>"
 
 #define MESSAGE_WRAPPER "<body xmlns:stream='http://etherx.jabber.org/streams' xmlns='http://jabber.org/protocol/httpbind'>%s</body>"
 
@@ -60,7 +61,7 @@ static int compare_sid(uint64_t s1, uint64_t s2) {
 }
 
 static unsigned int hash_sid(uint64_t s) {
-    return s % 4294967291;
+    return s % 4294967291u;
 }
 
 typedef uint64_t uint64;
