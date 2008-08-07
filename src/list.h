@@ -61,6 +61,11 @@ static inline int list_empty(list* l) {
     return &l->head == l->head.next;
 }
 
+/*! \brief Returns non-zero if the list has no more than one element */
+static inline int list_single(list* l) {
+    return &l->head == l->head.next->next;
+}
+
 /*! \brief Insert an element after the element pointed by the iterator*/
 static inline list_iterator list_insert(list_iterator pos, void* value) {
     _list_node* node;

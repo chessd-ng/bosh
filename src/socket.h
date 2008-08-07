@@ -51,6 +51,8 @@ Socket* sock_accept(Socket* sock);
 
 SocketStatus sock_status(Socket* sock);
 
+int sock_fd(Socket* sock);
+
 void sock_set_data_callback(Socket* sock, DataCallback callback,
         void* user_data);
 

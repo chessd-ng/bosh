@@ -7,9 +7,9 @@
         port='8082'
     />
     <log
-        filename='log/bosh2.log'
-        verbose='INFO'
-        rotate_size='1000M'
+        filename='log/bosh.log'
+        verbose='ERROR'
+        rotate_size='200M'
         compression_command='nice -n 19 bzip2'
         />
 </jbind>

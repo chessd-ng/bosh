@@ -110,6 +110,8 @@ void log_set_verbose(const char* level) {
     } else {
         log_conf.level = ERROR;
     }
+
+    log(INFO, "Set log level to %d", log_conf.level);
 }
 
 void log_init(iks* config) {
@@ -169,7 +171,7 @@ void _log(const char* function_name, int level, const char* format, ...) {
     char time_str[512];
 
     /* check verbosity level */
-    if(level > log_conf.level) {
+    if(level < log_conf.level) {
         return;
     }
 
@@ -189,7 +191,6 @@ void _log(const char* function_name, int level, const char* format, ...) {
     /* print the message to the log */
     va_start(args, format);
     vfprintf(log_conf.file, new_format, args);
-    fflush(log_conf.file);
     free(new_format);
 
     /* check if the file size reached the rotate size */

@@ -118,14 +118,19 @@ void sock_delete(Socket* sock) {
 void sock_flush_data(Socket* sock) {
     QueueItem* item;
     ssize_t ret;
+    int flags;
 
     while(!list_empty(sock->output_queue)) {
         item = list_front(sock->output_queue);
+        flags = MSG_NOSIGNAL | MSG_DONTWAIT;
+
+        if(!list_single(sock->output_queue)) {
+            flags |= MSG_MORE;
+        }
 
         while(item->offset < item->len) {
             ret = send(sock->fd, item->buffer + item->offset,
-                    item->len - item->offset, MSG_NOSIGNAL | MSG_DONTWAIT
-                    |MSG_MORE);
+                    item->len - item->offset, flags);
 
             if(ret > 0) {
                 item->offset += ret;
@@ -297,7 +302,7 @@ void sock_send(Socket* sock, void* buffer, size_t len, int more) {
         list_push_back(sock->output_queue, item);
     }
 
-    if(sock->status == SOCKET_CONNECTED && was_empty && (!more)) {
+    if(sock->status == SOCKET_CONNECTED && was_empty && (more == 0)) {
         sock_flush_data(sock);
     }
 
@@ -433,3 +438,7 @@ void sock_set_connect_callback(Socket* sock, ConnectCallback callback,
     sock->connect_data = user_data;
 }
 
+
+int sock_fd(Socket* sock) {
+    return sock->fd;
+}

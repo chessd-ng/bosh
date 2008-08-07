@@ -129,17 +129,15 @@ time_type jb_closest_timeout(JabberBind* bind) {
     /* check each connection */
     list_foreach(it, bind->jabber_connections) {
         j_client = list_iterator_value(it);
-        if(j_client-> alive == 1) {
-            if(j_client->connection != NULL) {
-                /* we have a request, so the timeout is the request timeout */
-                tmp = (j_client->timestamp + j_client->wait) - current;
-            } else {
-                /* we don't have a request, so the timeout is the session timeout */
-                tmp = (j_client->timestamp + bind->session_timeout) - current;
-            }
-            if(tmp < closest) {
-                closest = tmp;
-            }
+        if(j_client->connection != NULL) {
+            /* we have a request, so the timeout is the request timeout */
+            tmp = (j_client->timestamp + j_client->wait) - current;
+        } else {
+            /* we don't have a request, so the timeout is the session timeout */
+            tmp = (j_client->timestamp + bind->session_timeout) - current;
+        }
+        if(tmp < closest) {
+            closest = tmp;
         }
     }
 
@@ -427,7 +425,6 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
         jc_report_error(connection, CONNECTION_FAILED);
         return;
     }
-    iks_connect_fd(j_client->parser, 0);
 
     /* connect to host */
     j_client->sock = sock_new();
@@ -439,6 +436,7 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
         jc_report_error(connection, CONNECTION_FAILED);
         return;
     }
+    iks_connect_fd(j_client->parser, sock_fd(j_client->sock));
 
     /* pick a random sid */
     do {
