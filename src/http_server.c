@@ -27,7 +27,7 @@
 #include <errno.h>
 
 #include "http_server.h"
-#include "socket_util.h"
+#include "socket.h"
 #include "log.h"
 
 #include "allocator.h"
@@ -48,7 +48,7 @@ struct HttpConnection {
     char buffer[MAX_BUFFER_SIZE+1];
     size_t buffer_size;
     struct HttpServer* server;
-    int socket_fd;
+    Socket* sock;
     int rid;
 	list_iterator it;
 	HttpHeader* header;
@@ -56,8 +56,7 @@ struct HttpConnection {
 
 struct HttpServer {
     list* http_connections;
-    SocketMonitor* monitor;
-    int socket_fd;
+    Socket* sock;
 	hs_request_callback callback;
 	void* user_data;
 };
@@ -73,24 +72,18 @@ static void hc_report_error(HttpConnection* connection, const char* msg) {
 	asprintf(&body, HTML_ERROR, msg);
 	header = make_http_head(500, strlen(msg));
 
-	send(connection->socket_fd, header, strlen(header), 0);
-	send(connection->socket_fd, body, strlen(body), 0);
-
-	free(body);
-	free(header);
+    sock_send(connection->sock, header, strlen(header), 1);
+    sock_send(connection->sock, body, strlen(body), 0);
 }
 
 /*! \brief Release the connection's resources */
 static void hc_delete(HttpConnection* connection) {
-    HttpServer* server = connection->server;
+    //HttpServer* server = connection->server;
 
-    log(INFO, "closed");
+    log(INFO, "Http connection closed socket=%p", connection->sock);
 
-    /* stop monitoring socket */
-    sm_remove_socket(server->monitor, connection->socket_fd);
-
-    /* close the socket */
-    close(connection->socket_fd);
+    /* delete the socket */
+    sock_delete(connection->sock);
 
     /* erase the connection from the list of connections */
 	list_erase(connection->it);
@@ -109,7 +102,7 @@ static void hc_read_body(void* _connection);
 static void hc_read_header(void* _connection);
 
 /*! \brief Create an http connetion */
-static HttpConnection* hc_create(HttpServer* server, int socket_fd) {
+static HttpConnection* hc_create(HttpServer* server, Socket* sock) {
     HttpConnection* connection;
     
     /* alloc memory for the struct */
@@ -118,14 +111,16 @@ static HttpConnection* hc_create(HttpServer* server, int socket_fd) {
     /* init values */
     connection->buffer_size = 0;
     connection->server = server;
-    connection->socket_fd = socket_fd;
+    connection->sock = sock;
     connection->header = NULL;
 
     /* insert the conenction into the connection list */
 	connection->it = list_push_back(server->http_connections, connection);
 
     /* start to monitor the connection */
-    sm_add_socket(server->monitor, socket_fd, hc_read_header, connection);
+    sock_set_data_callback(sock, hc_read_header, connection);
+
+    log(INFO, "Http connection created socket=%p", connection->sock);
 
     return connection;
 }
@@ -143,25 +138,24 @@ static void hc_process(HttpConnection* connection) {
 
     /* absence of content lenght is not supported */
     if(tmp == NULL) {
-        log(WARNING, "invalid header");
+        log(WARNING, "Invalid http header");
 		hc_report_error(connection, "Invalid http header");
-        sm_replace_socket(connection->server->monitor, connection->socket_fd, hc_read_header, connection);
+        sock_set_data_callback(connection->sock, hc_read_header, connection);
         return;
     }
+
     length = atoi(tmp);
-    
-    log(INFO, "processing %d bytes", length);
 
     /* find the beginning of the content */
     data = strstr(connection->buffer, HTTP_LINE_SEP HTTP_LINE_SEP) + 4;
 
     /* check if everything is here */
-    if(connection->buffer_size >= (connection->buffer + connection->buffer_size) - data) {
+    if(connection->buffer_size - (data - connection->buffer) >= length) {
+
+        log(INFO, "Processing request Content-Length=%d", length);
 
         /* set the connection the wait for a header */
-        sm_replace_socket(connection->server->monitor, connection->socket_fd, hc_read_header, connection);
-
-        log(INFO, "delivering message");
+        sock_set_data_callback(connection->sock, hc_read_header, connection);
 
         /* inform the request */
 		hr.connection = connection;
@@ -183,45 +177,35 @@ static void hc_process(HttpConnection* connection) {
 static void hc_read_body(void* _connection) {
     HttpConnection* connection = _connection;
     int remaing_buffer;
-    int bytes;
+    ssize_t ret;
 	
     /* compute the ramaining buffer space */
 	remaing_buffer = MAX_BUFFER_SIZE - connection->buffer_size;
 
     /* receive the data */
-    bytes = recv(connection->socket_fd,
+    ret = sock_recv(connection->sock,
                  connection->buffer + connection->buffer_size,
-                 remaing_buffer,
-                 0);
+                 remaing_buffer);
 
-    if(bytes > 0) {
-        /* precess the data */
-		connection->buffer_size += bytes;
-        hc_process(connection);
-    } else if(bytes <= 0) {
-        /* close the connection */
-        log(INFO, "Connection closed.");
-        hc_delete(connection);
-    }
 }
 
 /*! \brief Read the header of a request */
 static void hc_read_header(void* _connection) {
-    int bytes;
     HttpConnection* connection = _connection;
+    int remaing_buffer;
+    ssize_t ret;
 
     /* compute the ramaining buffer space */
-    int remaing_buffer = MAX_BUFFER_SIZE - connection->buffer_size;
+    remaing_buffer = MAX_BUFFER_SIZE - connection->buffer_size;
 
     /* receive some data */
-    bytes = recv(connection->socket_fd,
+    ret = sock_recv(connection->sock,
                  connection->buffer + connection->buffer_size,
-                 remaing_buffer,
-                 0);
+                 remaing_buffer);
 
-    if(bytes > 0) {
+    if(ret > 0) {
         /* update the buffer */
-        connection->buffer_size += bytes;
+        connection->buffer_size += ret;
         connection->buffer[connection->buffer_size] = 0;
 
         /* parse the header */
@@ -229,35 +213,32 @@ static void hc_read_header(void* _connection) {
 
         /* if the header is complete, parser the content */
         if(connection->header != NULL) {
-            sm_replace_socket(connection->server->monitor, connection->socket_fd, hc_read_body, connection);
+            sock_set_data_callback(connection->sock, hc_read_body,
+                    connection);
             hc_process(connection);
         }
-            
-    } else if(bytes <= 0) {
-        /* close the connection */
-        log(INFO, "Connection closed.");
+    } else if(sock_status(connection->sock) != SOCKET_CONNECTED) {
         hc_delete(connection);
     }
 }
 
 /*! \breif Receive an incoming connection */
 static void hs_accept(void* _server) {
-    int client_fd;
+    Socket* client;
     HttpServer* server = _server;
 
     /* accept the conenction */
-    client_fd = accept(server->socket_fd, NULL, NULL);
+    client = sock_accept(server->sock);
 
     /* check for error */
-    if(client_fd == -1) {
-        perror("handle_connection");
+    if(client == NULL) {
         return;
     }
 
-    log(INFO, "new connection accepted %d", server->socket_fd);
+    log(INFO, "New connection accepted %p", server->sock);
 
     /* create the http connection */
-    hc_create(server, client_fd);
+    hc_create(server, client);
 
 }
 
@@ -270,13 +251,14 @@ static void hs_accept(void* _server) {
  *
  * \return A instance of the server
  */
-HttpServer* hs_new(iks* config, SocketMonitor* monitor, hs_request_callback callback, void* user_data) {
+HttpServer* hs_new(iks* config, hs_request_callback callback,
+        void* user_data) {
     HttpServer* server;
-    int fd;
+    Socket* sock;
     const char* str;
-    int port;
+    int port, ret;
 
-    /* read the port to listen */
+    /* get the port to listen */
     if((str = iks_find_attrib(config, "port")) != NULL) {
         port = atoi(str);
     } else {
@@ -284,8 +266,10 @@ HttpServer* hs_new(iks* config, SocketMonitor* monitor, hs_request_callback call
     }
 
     /* create the socket */
-    fd = listen_socket(port);
-    if(fd == -1) {
+    sock = sock_new();
+    ret = sock_listen(sock, port);
+    if(ret == 0) {
+        log(ERROR, "Failed to listen http server port %d", port);
         return NULL;
     }
 
@@ -293,19 +277,18 @@ HttpServer* hs_new(iks* config, SocketMonitor* monitor, hs_request_callback call
     server = malloc(sizeof(HttpServer));
 
     /* init values */
-    server->monitor = monitor;
-    server->socket_fd = fd;
+    server->sock = sock;
     server->http_connections = list_new();
 	server->callback = callback;
 	server->user_data = user_data;
 
     /* monitor the server socket for conenctions */
-    sm_add_socket(server->monitor, fd, hs_accept, server);
+    sock_set_accept_callback(sock, hs_accept, server);
 
     return server;
 }
 
-/*! \breif Close an http server */
+/*! \brief Close an http server */
 void hs_delete(HttpServer* server) {
 
     /* close ann connections */
@@ -314,7 +297,7 @@ void hs_delete(HttpServer* server) {
     }
 
     /* close the server socket */
-    close(server->socket_fd);
+    sock_delete(server->sock);
 
     /* free the list */
     list_delete(server->http_connections, NULL);
@@ -329,23 +312,17 @@ void hs_delete(HttpServer* server) {
  * \param msg is the content of the message
  * \param size is the size of the content
  */
-void hs_answer_request(HttpConnection* connection, const char* msg, size_t size) {
+void hs_answer_request(HttpConnection* connection,
+                       char* msg, size_t size) {
     char* header;
 
     /* create the header */
-	header = make_http_head(200, size);
+    header = make_http_head(200, size);
 
     log(INFO, "%s", msg);
 
     /* send the header and the content */
-    if(send(connection->socket_fd, header, strlen(header), 0) == -1) {
-        log(ERROR, "Could send data to socket %d: %s", connection->socket_fd, strerror(errno));
-    }
-    if(send(connection->socket_fd, msg, size, 0) == -1) {
-        log(ERROR, "Could send data to socket %d: %s", connection->socket_fd, strerror(errno));
-    }
-
-    /* free the header */
-    free(header);
+    sock_send(connection->sock, header, strlen(header), 1);
+    sock_send(connection->sock, msg, strlen(msg), 0);
 }
 

@@ -9,9 +9,9 @@ SOURCES += src/jabber_bind.c
 SOURCES += src/log.c
 SOURCES += src/main.c
 SOURCES += src/socket_monitor.c
-SOURCES += src/socket_util.c
 SOURCES += src/time.c
 SOURCES += src/list.c
+SOURCES += src/socket.c
 
 SRCDIR = src
 OBJDIR = obj
@@ -33,7 +33,7 @@ all: ${TARGET}
 -include ${DEPS}
 
 ${TARGET}: ${OBJECTS}
-	${CC} -o ${TARGET} ${OBJECTS} ${CXXFLAGS} ${LDLIBS}
+	${CC} -o ${TARGET} ${OBJECTS} ${CFLAGS} ${LDLIBS}
 
 .deps/%.d: ${SRCDIR}/%.cc
 	@mkdir -p $(dir $@)
@@ -41,15 +41,15 @@ ${TARGET}: ${OBJECTS}
 
 .deps/%.d: ${SRCDIR}/%.c
 	@mkdir -p $(dir $@)
-	${CXX} ${CXXFLAGS} -MM $< | sed 's/\(^[^ \.]*\)\.o/${OBJDIR}\/\1.o ${DEPSDIR}\/\1.d/' > $@
+	${CC} ${CFLAGS} -MM $< | sed 's/\(^[^ \.]*\)\.o/${OBJDIR}\/\1.o ${DEPSDIR}\/\1.d/' > $@
 
 obj/%.o: ${SRCDIR}/%.cc
 	@mkdir -p $(dir $@)
-	${CXX} -c ${CXXFLAGS} -o $@ $<
+	${CXX} ${CXXFLAGS} -c -o $@ $<
 
 obj/%.o: ${SRCDIR}/%.c
 	@mkdir -p $(dir $@)
-	${CC} -c ${CXXFLAGS} -o $@ $<
+	${CC} ${CFLAGS} -c -o $@ $<
 
 clean: clean-target clean-obj
 

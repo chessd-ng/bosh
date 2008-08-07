@@ -27,6 +27,7 @@
 
 
 #include "jabber_bind.h"
+#include "socket_monitor.h"
 
 int main(int argc, char** argv) {
     iks* config = 0;
@@ -48,6 +49,9 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Could not parse %s.\n", config_file);
         return 1;
     }
+
+    /* init the socket monitor */
+    sm_init();
 
     bind = jb_new(config);
 

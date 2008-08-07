@@ -41,10 +41,10 @@ typedef struct HttpRequest {
 
 typedef void(*hs_request_callback)(void* user_data, const HttpRequest* request);
 
-HttpServer* hs_new(iks* config, SocketMonitor* monitor, hs_request_callback callback, void* user_data);
+HttpServer* hs_new(iks* config, hs_request_callback callback, void* user_data);
 
 void hs_delete(HttpServer* server);
 
-void hs_answer_request(HttpConnection* connection, const char* msg, size_t size);
+void hs_answer_request(HttpConnection* connection, char* msg, size_t size);
 
 #endif

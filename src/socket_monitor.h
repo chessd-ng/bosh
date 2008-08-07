@@ -26,27 +26,25 @@
 #include "hash.h"
 #include "list.h"
 
-typedef void (*Callback)(void* user_data);
+typedef void (*Callback)(int events, void* user_data);
 
-struct SocketMonitor;
-typedef struct SocketMonitor SocketMonitor;
+/*! \brief Init the socket monitor. */
+void sm_init();
 
-/*! \brief Create a new monitor. */
-SocketMonitor* sm_new();
-
-/*! \brief Destroy a monitor. */
-void sm_delete(SocketMonitor* monitor);
+/*! \brief Quit the socket monitor. */
+void sm_quit();
 
 /*! \brief Add a socket to the monitor. */
-void sm_add_socket(SocketMonitor* monitor, int socket_fd, Callback callback, void* user_data);
+void sm_add_socket(int socket_fd, Callback callback, void* user_data,
+        int events);
 
-/*! \brief Replace a socket from the monitor. */
-void sm_replace_socket(SocketMonitor* monitor, int socket_fd, Callback callback, void* user_data);
+/*! \brief Replace the callback of a socket. */
+void sm_replace_callback(int socket_fd, Callback callback, void* user_data);
 
 /*! \brief Remove a socket from the monitor. */
-void sm_remove_socket(SocketMonitor* monitor, int socket_fd);
+void sm_remove_socket(int socket_fd, int events);
 
 /*! \brief Poll the sockets for any activity. */
-void sm_poll(SocketMonitor* monitor, time_type max_time);
+void sm_poll(time_type max_time);
 
 #endif

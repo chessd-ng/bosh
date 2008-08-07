@@ -30,11 +30,13 @@
 
 #include <iksemel.h>
 
+#include <errno.h>
+
 #include "http_server.h"
 #include "jabber_bind.h"
 #include "log.h"
 #include "allocator.h"
-#include "socket_util.h"
+#include "socket.h"
 
 #define JABBER_PORT 5222
 
@@ -56,11 +58,11 @@
 #define ERROR_RESPONSE "<body type='%s' condition='%s' xmlns='http://jabber.org/protocol/httpbind'/>"
 
 
-static int compare_sid(uint64_t s1, uint64_t s2) {
+static inline int compare_sid(uint64_t s1, uint64_t s2) {
     return s1 == s2;
 }
 
-static unsigned int hash_sid(uint64_t s) {
+static inline unsigned int hash_sid(uint64_t s) {
     return s % 4294967291u;
 }
 
@@ -83,40 +85,39 @@ const char ERROR_TABLE[][2][64] = {
 volatile int running;
 
 typedef struct JabberClient {
-    iksparser* parser;
-    int socket_fd;
-    uint64_t sid, rid;
-    HttpConnection* connection;
-    list* output_queue;
-    int alive;
-    time_type timestamp;
-    time_type wait;
-	list_iterator it;
-	struct JabberBind* bind;
+    iksparser* parser;          /* jabber stream parser from iksemel          */
+    Socket* sock;               /* socket of the jabber connection            */
+    uint64_t sid, rid;          /* rid and sid of the BOSH session            */
+    HttpConnection* connection; /* http connection of the pending request     */
+    list* output_queue;         /* queue of messages to be sent to the client */
+    int alive;                  /* 1 if the connection is alive, 0 otherwise  */
+    time_type timestamp;        /* last activity in the session               */
+    time_type wait;             /* maximum time to hold a request             */
+	list_iterator it;           /* pointer to this client in the client list  */
+	struct JabberBind* bind;    /* pointer to the bund struct                 */
 } JabberClient;
 
 
 struct JabberBind {
-	list* jabber_connections;
-	uint64_hash* sids;
-	SocketMonitor* monitor;
-	HttpServer* server;
+	list* jabber_connections;    /* list of jabber connecions                 */
+	uint64_hash* sids;           /* hash of used sids                         */
+	HttpServer* server;          /* pointer to the http server                */
 
-    int jabber_port;
-    int session_timeout;
-    int default_request_timeout;
+    int jabber_port;             /* port to connect to the jabber server      */
+    int session_timeout;         /* bosh session timeout                      */
 };
 
+/* Allocators */
 DECLARE_ALLOCATOR(JabberClient, 512);
 IMPLEMENT_ALLOCATOR(JabberClient);
 
-/*! \brief The signal handler */
+/*! \brief Handle exit signals */
 void handle_signal(int signal) {
-    log(INFO, "signal caught");
+    log(INFO, "signal caught %d", signal);
     running = 0;
 }
 
-/*! \brief Return the time remaning to the closest possible timeout  */
+/*! \brief Return the time remaning to the nearest possible timeout  */
 time_type jb_closest_timeout(JabberBind* bind) {
     list_iterator it;
     JabberClient* j_client;
@@ -128,15 +129,17 @@ time_type jb_closest_timeout(JabberBind* bind) {
     /* check each connection */
     list_foreach(it, bind->jabber_connections) {
         j_client = list_iterator_value(it);
-        if(j_client->connection != NULL) {
-            /* we have a request, so the timeout is the request timeout */
-            tmp = (j_client->timestamp + j_client->wait) - current;
-        } else {
-            /* we don't have a request, so the timeout is the sessin timeout */
-            tmp = (j_client->timestamp + bind->session_timeout) - current;
-        }
-        if(tmp < closest) {
-            closest = tmp;
+        if(j_client-> alive == 1) {
+            if(j_client->connection != NULL) {
+                /* we have a request, so the timeout is the request timeout */
+                tmp = (j_client->timestamp + j_client->wait) - current;
+            } else {
+                /* we don't have a request, so the timeout is the session timeout */
+                tmp = (j_client->timestamp + bind->session_timeout) - current;
+            }
+            if(tmp < closest) {
+                closest = tmp;
+            }
         }
     }
 
@@ -195,29 +198,27 @@ void jc_flush_messages(JabberClient* j_client) {
         j_client->timestamp = get_time();
 
         free(buffer);
-        free(body);
     }
 }
 
-/*! \brief answer a request with an empty body */
+/*! \brief Answer a request with an empty body */
 void jc_drop_request(JabberClient* j_client, int terminate) {
     char* body;
 
+    /* if terminate is true, send a notification that the session
+     * is been closed */
     if(terminate) {
         asprintf(&body, TERMINATE_SESSION_RESPONSE);
     } else {
         asprintf(&body, EMPTY_RESPONSE);
     }
+
+    /* answer the request */
     hs_answer_request(j_client->connection, body, strlen(body));
     j_client->connection = NULL;
-    j_client->timestamp = get_time();
-    free(body);
-}
 
-/*! \brief Put a message to be sent to a client */
-void jc_queue_message(JabberClient* j_client, iks* message) {
-    list_push_back(j_client->output_queue, message);
-    jc_flush_messages(j_client);
+    /* update last activity */
+    j_client->timestamp = get_time();
 }
 
 /*! \brief Free an iks struct */
@@ -237,15 +238,13 @@ void jb_close_client(JabberClient* j_client) {
         jc_drop_request(j_client, 1);
     }
 
-    /* stop monitoring the socket */
-    sm_remove_socket(bind->monitor, j_client->socket_fd);
-
     /* free iks struct */
     iks_disconnect(j_client->parser);
     iks_parser_delete(j_client->parser);
 
-    /* close the socket */
-    close(j_client->socket_fd);
+    if(j_client->sock != NULL) {
+        sock_delete(j_client->sock);
+    }
 
     /* erase the client from the list of clients */
     list_erase(j_client->it);
@@ -271,21 +270,27 @@ void jb_check_timeout(JabberBind* bind) {
     /* get current time */
     init = get_time();
 
+    /* check each connection for a timeout */
     list_foreach(it, bind->jabber_connections) {
         j_client = list_iterator_value(it);
 
         idle = init - j_client->timestamp;
         if(j_client->connection != NULL && idle >= j_client->wait) {
-            /* drop the request if it timed out */
+            /* we have a timedout request, drop it */
             jc_drop_request(j_client, 0);
-        } else if(j_client->connection == NULL && idle >= bind->session_timeout) {
-            /* close the conenction if the session timedout due to innactivity */
+        } else if(j_client->connection == NULL &&
+                  idle >= bind->session_timeout) {
+            /* we don't have a request and the session is idle for too long,
+             * close the session */
             log(INFO, "timeout on sid = %" PRId64, j_client->sid);
+            /* don't really close it right now, because our pointer to the list
+             * will became invalid if we do so, put it on a list so we can
+             * close it after we check all clients */
             list_push_back(to_close, j_client);
         }
     }
 
-    /* close connections */
+    /* close innactive connections */
     while(!list_empty(to_close)) {
         j_client = list_pop_front(to_close);
         jb_close_client(j_client);
@@ -300,11 +305,10 @@ int jc_handle_stanza(void* _j_client, int type, iks* stanza) {
     JabberClient* j_client = _j_client;
     /* no message ? */
     if(stanza == NULL) {
-        return IKS_OK;
-    }
-    if(type == IKS_NODE_NORMAL) {
+        /* do nothing */
+    } else if(type == IKS_NODE_NORMAL) {
         /* queue up a normal message */
-        jc_queue_message(j_client, stanza);
+        list_push_back(j_client->output_queue, stanza);
     } else if(type == IKS_NODE_ERROR || type == IKS_NODE_STOP) {
         /* close the connection in case of error or stop */
         log(INFO, "jabber connection ended");
@@ -319,14 +323,24 @@ int jc_handle_stanza(void* _j_client, int type, iks* stanza) {
 
 /*! \brief Handle activity in the jabber connection */
 void jc_read_jabber(void* _j_client) {
-    int ret;
+    ssize_t bytes;
+    int ret = IKS_OK;
+    char buffer[8192];
     JabberClient* j_client = _j_client;
 
-    /* receive messages, messages will be handled to jc_handle_stanza */
-    ret = iks_recv(j_client->parser, 0);
+    /* read the socket and feed the parser */
+    while(ret == IKS_OK &&
+            (bytes = sock_recv(j_client->sock,
+                          buffer, sizeof(buffer))) > 0) {
+        ret = iks_parse(j_client->parser, buffer, bytes, 0);
+    }
 
-    /* close the client if the connection was closed */
-    if(j_client->alive == 0 || ret != IKS_OK) {
+    /* flush the messages */
+    jc_flush_messages(j_client);
+
+    /* check if the connection was closed */
+    if(sock_status(j_client->sock) != SOCKET_CONNECTED || ret != IKS_OK ||
+            j_client->alive == 0) {
         jb_close_client(j_client);
     }
 }
@@ -340,47 +354,31 @@ void jc_report_error(HttpConnection* connection, enum BIND_ERROR_CODE code) {
 
     /* send the message */
     hs_answer_request(connection, body, strlen(body));
-
-    /* free local stuff */
-    free(body);
 }
 
+/*! \brief Returns a random sid */
 uint64_t gen_sid() {
     return lrand48() | (((uint64_t)lrand48())<<32);
 }
 
-/*" \breif Connect to the jabber server */
-iksparser* jabber_connect(const char* host_addr, int port, void *user_data, iksStreamHook callback) {
-	int socket_fd;
-	iksparser* parser;
-	char* tmp;
+void jc_answer_creation(int success, void* user_data) {
+    JabberClient* j_client = user_data;
 
-    /* connect to the host */
-	socket_fd = connect_socket(host_addr, port);
-	if(socket_fd == -1) {
-		return NULL;
-	}
-	
-    /* create the parser */
-	parser = iks_stream_new("jabber:client", user_data, callback);
+    if(success == 0) {
+        /* connection has failed */
+        log(WARNING, "Could not connect to the jabber server");
 
-    /* set the parser fd */
-	iks_connect_fd(parser, socket_fd);
-	
-    /* send header */
-	asprintf(&tmp, JABBER_HEADER, host_addr);
-    send(socket_fd, tmp, strlen(tmp), 0);
-	free(tmp);
-
-	return parser;
-
+        /* close the client */
+        jb_close_client(j_client);
+    }
 }
+
 /*! \brief Create a new connection to the jabber server */
-JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, iks* body) {
+void jb_connect_client(JabberBind* bind, HttpConnection* connection,
+        iks* body) {
+
     char* tmp;
     char* host;
-    char* bind_body;
-    iksparser* parser;
     JabberClient* j_client;
     uint64_t rid;
 
@@ -390,19 +388,22 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     /* get wait parameter */
     tmp = iks_find_attrib(body, "wait");
     if(tmp == NULL) {
-        j_client->wait = bind->default_request_timeout;
-    } else {
-        j_client->wait = atoi(tmp) * 1000;
+        log(WARNING, "No wait attribute in the header");
+        JabberClient_free(j_client);
+        iks_delete(body);
+        jc_report_error(connection, BAD_FORMAT);
+        return;
     }
+    j_client->wait = atoi(tmp) * 1000;
 
     /* get to parameter */
     host = iks_find_attrib(body, "to");
     if(host == NULL) {
-        log(WARNING, "wrong header");
+        log(WARNING, "No to attribute in the header");
         JabberClient_free(j_client);
         iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
-        return NULL;
+        return;
     }
 
     /* get rid parameter */
@@ -412,21 +413,32 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
         JabberClient_free(j_client);
         iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
-        return NULL;
+        return;
     }
     sscanf(tmp, "%" PRId64, &rid);
 
-    /* connect to the jabber server */
-    parser = jabber_connect(host, bind->jabber_port, j_client, jc_handle_stanza);
-    if(parser == NULL) {
-        log(ERROR, "could not connect to jabber server");
+    /* create the parser */
+    j_client->parser = iks_stream_new("jabber:client", j_client,
+            jc_handle_stanza);
+    if(j_client->parser == NULL) {
+        log(WARNING, "Could not create the jabber parser");
         JabberClient_free(j_client);
         iks_delete(body);
         jc_report_error(connection, CONNECTION_FAILED);
-        return NULL;
+        return;
     }
+    iks_connect_fd(j_client->parser, 0);
 
-    log(INFO, "connected to jabber server");
+    /* connect to host */
+    j_client->sock = sock_new();
+    if(sock_connect(j_client->sock, host, bind->jabber_port) == 0) {
+        log(WARNING, "Could not connect to the jabber server");
+        sock_delete(j_client->sock);
+        JabberClient_free(j_client);
+        iks_delete(body);
+        jc_report_error(connection, CONNECTION_FAILED);
+        return;
+    }
 
     /* pick a random sid */
     do {
@@ -437,32 +449,29 @@ JabberClient* jb_connect_client(JabberBind* bind, HttpConnection* connection, ik
     uint64_hash_insert(bind->sids, j_client->sid, j_client);
 
     /* init client values */
-    j_client->parser = parser;
     j_client->output_queue = list_new();
     j_client->bind = bind;
     j_client->connection = NULL;
     j_client->alive = 1;
     j_client->timestamp = get_time();
-    j_client->socket_fd = iks_fd(j_client->parser);
     j_client->it = list_push_back(bind->jabber_connections, j_client);
 
-    /* start monitoring the socket */
-    sm_add_socket(bind->monitor, j_client->socket_fd, jc_read_jabber, j_client);
+    /* send jabber header */
+    asprintf(&tmp, JABBER_HEADER, host);
+    sock_send(j_client->sock, tmp, strlen(tmp), 0);
 
-    /* send request response */
-    asprintf(&bind_body, SESSION_RESPONSE, j_client->sid);
-    hs_answer_request(connection, bind_body, strlen(bind_body));
+    /* set callbacks */
+    sock_set_data_callback(j_client->sock, jc_read_jabber, j_client);
+    sock_set_connect_callback(j_client->sock, jc_answer_creation, j_client);
 
+    /* send response */
+    asprintf(&tmp, SESSION_RESPONSE, j_client->sid);
+    hs_answer_request(connection, tmp, strlen(tmp));
+
+    log(INFO, "New bosh session: sid=%" PRId64 " socket=%p",
+            j_client->sid, j_client->sock);
     /* free local stuff */
-    free(bind_body);
     iks_delete(body);
-
-    return j_client;
-}
-
-/*! \brief Find a jabber client by its sid */
-JabberClient* jb_find_client(JabberBind* bind, uint64_t sid) {
-    return uint64_hash_find(bind->sids, sid);
 }
 
 /*! \brief Set the client request */
@@ -496,25 +505,23 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
     /* parse the content */
     message = iks_tree(request->data, request->data_size, NULL);
 
-    /* return a error if the xml is malformed */
+    /* return an error if the xml is malformed */
     if(message == NULL) {
+        log(WARNING, "Malformed xml");
         jc_report_error(request->connection, BAD_FORMAT);
         return;
     }
 
     /* get the sid */
     tmp = iks_find_attrib(message, "sid");
-    if(tmp == NULL) {
-        /* if there is no sid, than it is a request to create a connection */
-        jb_connect_client(bind, request->connection, message);
-    } else {
+    if(tmp != NULL) {
         /* parse the sid */
         sscanf(tmp, "%" PRId64, &sid);
 
         /* get the rid */
         tmp = iks_find_attrib(message, "rid");
         if(tmp == NULL) {
-            log(WARNING, "rid not found");
+            log(WARNING, "No rid in the header");
             jc_report_error(request->connection, BAD_FORMAT);
             iks_delete(message);
             return;
@@ -522,9 +529,9 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         sscanf(tmp, "%" PRId64, &rid);
 
         /* get the client */
-        j_client = jb_find_client(bind, sid);
+        j_client = uint64_hash_find(bind->sids, sid);
         if(j_client == NULL) {
-            log(WARNING, "sid not found");
+            log(WARNING, "Sid not found: sid = %" PRId64, sid);
             jc_report_error(request->connection, SID_NOT_FOUND);
             iks_delete(message);
             return;
@@ -532,12 +539,13 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         jc_set_http(j_client, request->connection, rid);
 
         /* send stanzas to the client */
-        for(stanza = iks_first_tag(message); stanza != NULL; stanza = iks_next_tag(stanza)) {
+        for(stanza = iks_first_tag(message);
+                stanza != NULL; stanza = iks_next_tag(stanza)) {
             tmp = iks_string(NULL, stanza);
             log(INFO, "%s", tmp);
-            send(j_client->socket_fd, tmp, strlen(tmp), 0);
-            iks_free(tmp);
+            sock_send(j_client->sock, tmp, strlen(tmp), 1);
         }
+        sock_send(j_client->sock, NULL, 0, 0);
 
         /* close the connection if the type is terminate */
         if(iks_strcmp(iks_find_attrib(message, "type"), "terminate") == 0) {
@@ -545,6 +553,9 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         }
 
         iks_delete(message);
+    } else {
+        /* if there is no sid, than it is a request to create a connection */
+        jb_connect_client(bind, request->connection, message);
     }
 }
 
@@ -555,23 +566,23 @@ void jb_run(JabberBind* bind) {
     /* init running */
     running = 1;
 
-
     /* set signal handlers */
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
 
-    log(INFO, "server started");
+    log(INFO, "Server is running");
 
+    /* keep running until we receive a signal */
     while(running == 1) {
-        /* take the closets timeout */
+        /* take the nearest timeout */
         max_time = jb_closest_timeout(bind);
 
         /* some sanity test */
         if(max_time < 0)
             max_time = 0;
 
-        /* wait at most max_time */
-        sm_poll(bind->monitor, max_time);
+        /* wait for any socket activity, don't wait more than max_time */
+        sm_poll(max_time);
 
         /* check if any timeout went off */
         jb_check_timeout(bind);
@@ -613,26 +624,14 @@ JabberBind* jb_new(iks* config) {
         jb->session_timeout = SESSION_TIMEOUT;
     }
 
-    /* set default_request_timeout */
-    if((str = iks_find_attrib(bind_config, "default_request_timeout")) != NULL) {
-        jb->default_request_timeout = atoi(str);
-    } else {
-        jb->default_request_timeout = DEFAULT_REQUEST_TIMEOUT;
-    }
-
     /* init log */
-    if(log_config != NULL) {
-        log_init(log_config);
-    }
-
-    /* create a socket monitor */
-    jb->monitor = sm_new();
+    log_init(log_config);
 
     /* create the http server */
-    jb->server = hs_new(http_config, jb->monitor, jb_handle_request, jb);
+    jb->server = hs_new(http_config, jb_handle_request, jb);
 
     if(jb->server == NULL) {
-        sm_delete(jb->monitor);
+        log(ERROR, "Failed to start HTTP server");
         free(jb);
         return NULL;
     }
@@ -663,9 +662,6 @@ void jb_delete(JabberBind* bind) {
 
     /* delete the http server */
     hs_delete(bind->server);
-
-    /* delete the socket monitor */
-    sm_delete(bind->monitor);
 
     free(bind);
 }
