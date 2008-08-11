@@ -55,7 +55,7 @@ typedef struct SocketInfo {
     list_iterator it;
 } SocketInfo;
 
-DECLARE_ALLOCATOR(SocketInfo, 1024);
+DECLARE_ALLOCATOR(SocketInfo);
 IMPLEMENT_ALLOCATOR(SocketInfo);
 
 static SocketMonitor* monitor = NULL;

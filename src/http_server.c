@@ -61,7 +61,7 @@ struct HttpServer {
 	void* user_data;
 };
 
-DECLARE_ALLOCATOR(HttpConnection, 1);
+DECLARE_ALLOCATOR(HttpConnection);
 IMPLEMENT_ALLOCATOR(HttpConnection);
 
 /*! \brief Send an http error response */
@@ -98,8 +98,7 @@ static void hc_delete(HttpConnection* connection) {
     HttpConnection_free(connection);
 }
 
-static void hc_read_body(void* _connection);
-static void hc_read_header(void* _connection);
+static void hc_read(void* _connection);
 
 /*! \brief Create an http connetion */
 static HttpConnection* hc_create(HttpServer* server, Socket* sock) {
@@ -118,7 +117,7 @@ static HttpConnection* hc_create(HttpServer* server, Socket* sock) {
 	connection->it = list_push_back(server->http_connections, connection);
 
     /* start to monitor the connection */
-    sock_set_data_callback(sock, hc_read_header, connection);
+    sock_set_data_callback(sock, hc_read, connection);
 
     log(INFO, "Http connection created socket=%p", connection->sock);
 
@@ -129,7 +128,7 @@ static HttpConnection* hc_create(HttpServer* server, Socket* sock) {
 static void hc_process(HttpConnection* connection) {
     const char* tmp;
     const char* data;
-    int length;
+    int content_size, header_size;
 	HttpRequest hr;
     HttpServer* server = connection->server;
 
@@ -139,58 +138,56 @@ static void hc_process(HttpConnection* connection) {
     /* absence of content lenght is not supported */
     if(tmp == NULL) {
         log(WARNING, "Invalid http header");
-		hc_report_error(connection, "Invalid http header");
-        sock_set_data_callback(connection->sock, hc_read_header, connection);
+        hc_report_error(connection, "Invalid http header");
+        hc_delete(connection);
         return;
     }
-
-    length = atoi(tmp);
 
     /* find the beginning of the content */
     data = strstr(connection->buffer, HTTP_LINE_SEP HTTP_LINE_SEP) + 4;
 
+    header_size = data - connection->buffer;
+
+    content_size = atoi(tmp);
+
+    /* check if the message is bigger than current buffer size */
+    if(content_size + header_size >= MAX_BUFFER_SIZE) {
+        log(WARNING, "Message is too big");
+        hc_report_error(connection, "Message is too big");
+        hc_delete(connection);
+        return;
+    }
+
     /* check if everything is here */
-    if(connection->buffer_size - (data - connection->buffer) >= length) {
+    if(connection->buffer_size >= header_size + content_size) {
 
-        log(INFO, "Processing request Content-Length=%d", length);
-
-        /* set the connection the wait for a header */
-        sock_set_data_callback(connection->sock, hc_read_header, connection);
+        log(INFO, "Processing request Content-Length=%d", content_size);
 
         /* inform the request */
 		hr.connection = connection;
 		hr.header = connection->header;
 		hr.data = data;
-		hr.data_size = length;
+		hr.data_size = content_size;
 		server->callback(server->user_data, &hr);
 
         /* free the header, we don't need it anymore */
 		http_delete(connection->header);
 		connection->header = NULL;
 
-        /* reset the buffer */
-        connection->buffer_size = 0;
+        /* move the buffer */
+        if(connection->buffer_size > header_size + content_size) {
+            memmove(connection->buffer, connection->buffer + header_size +
+                    content_size, connection->buffer_size - header_size -
+                    content_size);
+            connection->buffer_size -= header_size + content_size;
+        } else {
+            connection->buffer_size = 0;
+        }
     }
 }
 
-/*! \brief Read the content of a request */
-static void hc_read_body(void* _connection) {
-    HttpConnection* connection = _connection;
-    int remaing_buffer;
-    ssize_t ret;
-	
-    /* compute the ramaining buffer space */
-	remaing_buffer = MAX_BUFFER_SIZE - connection->buffer_size;
-
-    /* receive the data */
-    ret = sock_recv(connection->sock,
-                 connection->buffer + connection->buffer_size,
-                 remaing_buffer);
-
-}
-
 /*! \brief Read the header of a request */
-static void hc_read_header(void* _connection) {
+static void hc_read(void* _connection) {
     HttpConnection* connection = _connection;
     int remaing_buffer;
     ssize_t ret;
@@ -209,15 +206,16 @@ static void hc_read_header(void* _connection) {
         connection->buffer[connection->buffer_size] = 0;
 
         /* parse the header */
-        connection->header = http_parse(connection->buffer);
+        if(connection->header == NULL) {
+            connection->header = http_parse(connection->buffer);
+        }
 
         /* if the header is complete, parser the content */
         if(connection->header != NULL) {
-            sock_set_data_callback(connection->sock, hc_read_body,
-                    connection);
             hc_process(connection);
         }
-    } else if(sock_status(connection->sock) != SOCKET_CONNECTED) {
+    }
+    if(sock_status(connection->sock) != SOCKET_CONNECTED) {
         hc_delete(connection);
     }
 }

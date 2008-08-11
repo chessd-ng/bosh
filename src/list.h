@@ -44,8 +44,8 @@ typedef struct list {
 /*! \brief The list iterator's */
 typedef _list_node* list_iterator;
 
-DECLARE_ALLOCATOR(_list_node, 4096)
-DECLARE_ALLOCATOR(list, 32)
+DECLARE_ALLOCATOR(_list_node)
+DECLARE_ALLOCATOR(list)
 
 /*! \brief Create a new list */
 static inline list* list_new() {

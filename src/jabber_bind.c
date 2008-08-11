@@ -108,7 +108,7 @@ struct JabberBind {
 };
 
 /* Allocators */
-DECLARE_ALLOCATOR(JabberClient, 512);
+DECLARE_ALLOCATOR(JabberClient);
 IMPLEMENT_ALLOCATOR(JabberClient);
 
 /*! \brief Handle exit signals */
@@ -280,7 +280,7 @@ void jb_check_timeout(JabberBind* bind) {
                   idle >= bind->session_timeout) {
             /* we don't have a request and the session is idle for too long,
              * close the session */
-            log(INFO, "timeout on sid = %" PRId64, j_client->sid);
+            log(WARNING, "timeout on sid = %" PRId64, j_client->sid);
             /* don't really close it right now, because our pointer to the list
              * will became invalid if we do so, put it on a list so we can
              * close it after we check all clients */
@@ -529,7 +529,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         /* get the client */
         j_client = uint64_hash_find(bind->sids, sid);
         if(j_client == NULL) {
-            log(WARNING, "Sid not found: sid = %" PRId64, sid);
+            log(WARNING, "Sid not found");
             jc_report_error(request->connection, SID_NOT_FOUND);
             iks_delete(message);
             return;

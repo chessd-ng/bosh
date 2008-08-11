@@ -56,10 +56,10 @@ struct Socket {
     SocketStatus status;
 };
 
-DECLARE_ALLOCATOR(QueueItem, 512);
+DECLARE_ALLOCATOR(QueueItem);
 IMPLEMENT_ALLOCATOR(QueueItem);
 
-DECLARE_ALLOCATOR(Socket, 128);
+DECLARE_ALLOCATOR(Socket);
 IMPLEMENT_ALLOCATOR(Socket);
 
 /*! \brief Create a new socket */
@@ -103,18 +103,19 @@ void sock_close(Socket* sock) {
     while(!list_empty(sock->output_queue)) {
         item_delete(list_pop_front(sock->output_queue));
     }
-    list_delete(sock->output_queue, NULL);
 
+    /* set status to idle */
     sock->status = SOCKET_IDLE;
 }
 
 /*! \brief Delete a socket */
 void sock_delete(Socket* sock) {
     sock_close(sock);
+    list_delete(sock->output_queue, NULL);
     Socket_free(sock);
 }
 
-/*" \brief Send data that is in the queue to the socket */
+/*! \brief Send data that is in the queue to the socket */
 void sock_flush_data(Socket* sock) {
     QueueItem* item;
     ssize_t ret;

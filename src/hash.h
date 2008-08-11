@@ -57,8 +57,8 @@ typedef struct key_type##_hash {                                            \
     size_t element_count;                                                   \
 } key_type##_hash;                                                          \
                                                                             \
-DECLARE_ALLOCATOR(_##key_type##_hash_node, 4096);                           \
-DECLARE_ALLOCATOR(key_type##_hash, 32);                                     \
+DECLARE_ALLOCATOR(_##key_type##_hash_node);                                 \
+DECLARE_ALLOCATOR(key_type##_hash);                                         \
                                                                             \
 /*! \brief Creates a new hash table. */                                     \
 static inline key_type##_hash* key_type##_hash_new() {                      \
