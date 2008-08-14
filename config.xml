@@ -8,8 +8,8 @@
     />
     <log
         filename='log/bosh.log'
-        verbose='ERROR'
+        verbose='INFO'
         rotate_size='200M'
-        compression_command='nice -n 19 bzip2'
+        compression_command='nice -n 19 gzip'
         />
 </jbind>

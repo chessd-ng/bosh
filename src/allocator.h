@@ -37,8 +37,9 @@
     _##type##_allocator_node* _##type##_allocator_buffer = NULL;
 
 #define DECLARE_ALLOCATOR(type)                                                \
-    static const size_t _##type##alloc_step = (sizeof(type) + (128*1024) - 1)  \
-                / sizeof(type);                                                \
+    static const size_t _##type##alloc_step = (((sizeof(type) + (128*1024) - 1)\
+                / sizeof(type)) > ALLOCATOR_BLOCK_SIZE) ? ALLOCATOR_BLOCK_SIZE:\
+                ((sizeof(type) + (128*1024) - 1) / sizeof(type));              \
     typedef struct _##type##_allocator_node {                                  \
         struct _##type##_allocator_node *next, *prev;                          \
         size_t size;                                                           \

@@ -317,8 +317,6 @@ void hs_answer_request(HttpConnection* connection,
     /* create the header */
     header = make_http_head(200, size);
 
-    log(INFO, "%s", msg);
-
     /* send the header and the content */
     sock_send(connection->sock, header, strlen(header), 1);
     sock_send(connection->sock, msg, strlen(msg), 0);

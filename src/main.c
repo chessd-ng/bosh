@@ -28,6 +28,7 @@
 
 #include "jabber_bind.h"
 #include "socket_monitor.h"
+#include "log.h"
 
 int main(int argc, char** argv) {
     iks* config = 0;
@@ -65,6 +66,10 @@ int main(int argc, char** argv) {
 	jb_run(bind);
 
 	jb_delete(bind);
+
+    sm_quit();
+
+    log_quit();
 
     return 0;
 }

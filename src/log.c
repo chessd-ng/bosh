@@ -44,6 +44,17 @@ struct {
     int level;
 } log_conf = {NULL, NULL, 0, NULL, ERROR};
 
+void log_quit() {
+    if(log_conf.filename != NULL) {
+        free(log_conf.filename);
+    } 
+    if(log_conf.file != NULL && log_conf.file != stdout) {
+        fclose(log_conf.file);
+    }
+    if(log_conf.compression_command != NULL) {
+        free(log_conf.compression_command);
+    }
+}
 void log_set_file(const char* filename) {
     log_conf.filename = NULL;
 

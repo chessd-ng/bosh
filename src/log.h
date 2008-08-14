@@ -31,6 +31,8 @@
 
 void log_init(iks* config);
 
+void log_quit();
+
 void _log(const char* function_name, int level, const char* format, ...);
 
 #endif

@@ -186,7 +186,8 @@ void jc_flush_messages(JabberClient* j_client) {
         /* create http content */
         asprintf(&body, MESSAGE_WRAPPER, buffer);
 
-        log(INFO, "%s", body);
+        log(INFO, "Request response sid=%" PRId64 " message: %s",
+                j_client->sid, body);
 
         /* send messages */
         hs_answer_request(j_client->connection, body, strlen(body));
@@ -217,6 +218,9 @@ void jc_drop_request(JabberClient* j_client, int terminate) {
 
     /* update last activity */
     j_client->timestamp = get_time();
+
+    log(INFO, "Request response sid=%" PRId64 " message: %s", j_client->sid,
+            body);
 }
 
 /*! \brief Free an iks struct */
@@ -229,7 +233,7 @@ static void _iks_delete(void* _iks) {
 void jb_close_client(JabberClient* j_client) {
     JabberBind* bind = j_client->bind;
 
-    log(INFO, "sid = %" PRId64, j_client->sid);
+    log(INFO, "Connection closed sid=%" PRId64, j_client->sid);
 
     /* drop the request if we have one */
     if(j_client->connection != NULL) {
@@ -280,7 +284,7 @@ void jb_check_timeout(JabberBind* bind) {
                   idle >= bind->session_timeout) {
             /* we don't have a request and the session is idle for too long,
              * close the session */
-            log(WARNING, "timeout on sid = %" PRId64, j_client->sid);
+            log(WARNING, "timeout on sid=%" PRId64, j_client->sid);
             /* don't really close it right now, because our pointer to the list
              * will became invalid if we do so, put it on a list so we can
              * close it after we check all clients */
@@ -309,7 +313,7 @@ int jc_handle_stanza(void* _j_client, int type, iks* stanza) {
         list_push_back(j_client->output_queue, stanza);
     } else if(type == IKS_NODE_ERROR || type == IKS_NODE_STOP) {
         /* close the connection in case of error or stop */
-        log(INFO, "jabber connection ended");
+        log(INFO, "Jabber connection ended sid=%" PRId64, j_client->sid);
         iks_delete(stanza);
         j_client->alive = 0;
     } else {
@@ -364,7 +368,7 @@ void jc_answer_creation(int success, void* user_data) {
 
     if(success == 0) {
         /* connection has failed */
-        log(WARNING, "Could not connect to the jabber server");
+        log(WARNING, "Could not connect to the jabber server sid=%" PRId64, j_client->sid);
 
         /* close the client */
         jb_close_client(j_client);
@@ -388,7 +392,6 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
     if(tmp == NULL) {
         log(WARNING, "No wait attribute in the header");
         JabberClient_free(j_client);
-        iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
         return;
     }
@@ -399,7 +402,6 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
     if(host == NULL) {
         log(WARNING, "No to attribute in the header");
         JabberClient_free(j_client);
-        iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
         return;
     }
@@ -409,7 +411,6 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
     if(tmp == NULL) {
         log(WARNING, "Wrong header");
         JabberClient_free(j_client);
-        iks_delete(body);
         jc_report_error(connection, BAD_FORMAT);
         return;
     }
@@ -421,7 +422,6 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
     if(j_client->parser == NULL) {
         log(WARNING, "Could not create the jabber parser");
         JabberClient_free(j_client);
-        iks_delete(body);
         jc_report_error(connection, CONNECTION_FAILED);
         return;
     }
@@ -432,7 +432,6 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
         log(WARNING, "Could not connect to the jabber server");
         sock_delete(j_client->sock);
         JabberClient_free(j_client);
-        iks_delete(body);
         jc_report_error(connection, CONNECTION_FAILED);
         return;
     }
@@ -468,8 +467,6 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
 
     log(INFO, "New bosh session: sid=%" PRId64 " socket=%p",
             j_client->sid, j_client->sock);
-    /* free local stuff */
-    iks_delete(body);
 }
 
 /*! \brief Set the client request */
@@ -498,8 +495,6 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
 
     bind = _bind;
 
-    log(INFO, "%s", request->data);
-
     /* parse the content */
     message = iks_tree(request->data, request->data_size, NULL);
 
@@ -516,6 +511,9 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         /* parse the sid */
         sscanf(tmp, "%" PRId64, &sid);
 
+        log(INFO, "Incoming request sid=%s %s", tmp,
+                request->data);
+
         /* get the rid */
         tmp = iks_find_attrib(message, "rid");
         if(tmp == NULL) {
@@ -529,7 +527,7 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         /* get the client */
         j_client = uint64_hash_find(bind->sids, sid);
         if(j_client == NULL) {
-            log(WARNING, "Sid not found");
+            log(WARNING, "Sid not found: %" PRId64, sid);
             jc_report_error(request->connection, SID_NOT_FOUND);
             iks_delete(message);
             return;
@@ -540,7 +538,6 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
         for(stanza = iks_first_tag(message);
                 stanza != NULL; stanza = iks_next_tag(stanza)) {
             tmp = iks_string(NULL, stanza);
-            log(INFO, "%s", tmp);
             sock_send(j_client->sock, tmp, strlen(tmp), 1);
         }
         sock_send(j_client->sock, NULL, 0, 0);
@@ -550,11 +547,11 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
             jb_close_client(j_client);
         }
 
-        iks_delete(message);
     } else {
         /* if there is no sid, than it is a request to create a connection */
         jb_connect_client(bind, request->connection, message);
     }
+    iks_delete(message);
 }
 
 /*! \brief Run the server until a SIGINT or SIGTERM signal is caught */
