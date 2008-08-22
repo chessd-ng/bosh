@@ -52,6 +52,9 @@ struct HttpConnection {
     int rid;
 	list_iterator it;
 	HttpHeader* header;
+
+    hc_close_callback close_callback;
+    void* close_data;
 };
 
 struct HttpServer {
@@ -69,8 +72,8 @@ static void hc_report_error(HttpConnection* connection, const char* msg) {
 	char* body = NULL;
 	char* header = NULL;
 
-	asprintf(&body, HTML_ERROR, msg);
 	header = make_http_head(500, strlen(msg));
+	asprintf(&body, HTML_ERROR, msg);
 
     sock_send(connection->sock, header, strlen(header), 1);
     sock_send(connection->sock, body, strlen(body), 0);
@@ -81,6 +84,11 @@ static void hc_delete(HttpConnection* connection) {
     //HttpServer* server = connection->server;
 
     log(INFO, "Http connection closed socket=%p", connection->sock);
+
+    /* call the close callback if there is any */
+    if(connection->close_callback != NULL) {
+        connection->close_callback(connection->close_data);
+    }
 
     /* delete the socket */
     sock_delete(connection->sock);
@@ -112,6 +120,8 @@ static HttpConnection* hc_create(HttpServer* server, Socket* sock) {
     connection->server = server;
     connection->sock = sock;
     connection->header = NULL;
+    connection->close_callback = NULL;
+    connection->close_data = NULL;
 
     /* insert the conenction into the connection list */
 	connection->it = list_push_back(server->http_connections, connection);
@@ -122,6 +132,15 @@ static HttpConnection* hc_create(HttpServer* server, Socket* sock) {
     log(INFO, "Http connection created socket=%p", connection->sock);
 
     return connection;
+}
+
+/*! \brief Set a callback to be called when the connection is closed before the
+ * request is answered. */
+void hc_set_close_callback(HttpConnection* connection,
+        hc_close_callback callback, void* data) {
+
+    connection->close_callback = callback;
+    connection->close_data = data;
 }
 
 /*! \brief Process an incoming message */
@@ -137,9 +156,8 @@ static void hc_process(HttpConnection* connection) {
 
     /* absence of content lenght is not supported */
     if(tmp == NULL) {
-        log(WARNING, "Invalid http header");
-        hc_report_error(connection, "Invalid http header");
-        hc_delete(connection);
+        log(WARNING, "Invalid http header, missing Content-Length");
+        hc_report_error(connection, "Invalid http header, missing Content-Length");
         return;
     }
 
@@ -154,7 +172,6 @@ static void hc_process(HttpConnection* connection) {
     if(content_size + header_size >= MAX_BUFFER_SIZE) {
         log(WARNING, "Message is too big");
         hc_report_error(connection, "Message is too big");
-        hc_delete(connection);
         return;
     }
 
@@ -320,5 +337,9 @@ void hs_answer_request(HttpConnection* connection,
     /* send the header and the content */
     sock_send(connection->sock, header, strlen(header), 1);
     sock_send(connection->sock, msg, strlen(msg), 0);
+
+    /* clear the callback */
+    connection->close_callback = NULL;
+    connection->close_data = NULL;
 }
 

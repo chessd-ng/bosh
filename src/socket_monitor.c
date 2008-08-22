@@ -20,6 +20,8 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/epoll.h>
 
 #include "socket_monitor.h"
 #include "allocator.h"
@@ -39,21 +41,17 @@ DECLARE_HASH(int, hash_int, cmp_int);
 IMPLEMENT_HASH(int);
 
 typedef struct SocketMonitor {
-    struct pollfd poll_list[MAX_SOCKETS];
+    int epoll_fd;
     int_hash* socket_hash;
-    list* sockets;
     int socket_count;
 } SocketMonitor;
 
-typedef struct SocketInfo {
+struct SocketInfo {
     Callback callback;
     void* user_data;
-    int id;
     int socket_fd;
-
-    /* iterator to this socket in the monitor list */
-    list_iterator it;
-} SocketInfo;
+    int events;
+};
 
 DECLARE_ALLOCATOR(SocketInfo);
 IMPLEMENT_ALLOCATOR(SocketInfo);
@@ -64,123 +62,105 @@ SocketMonitor* sm_new() {
     SocketMonitor* monitor = malloc(sizeof(SocketMonitor));
     monitor->socket_count = 0;
     monitor->socket_hash = int_hash_new();
-    monitor->sockets = list_new();
+    monitor->epoll_fd = epoll_create(MAX_SOCKETS);
     return monitor;
 }
 
-void sm_delete(SocketMonitor* monitor) {
-    list_iterator it;
+void socket_free_callback(int k, void* si) {
+    SocketInfo_free(si);
+}
 
-    list_foreach(it, monitor->sockets) {
-        SocketInfo_free(list_iterator_value(it));
-    }
+void sm_delete(SocketMonitor* monitor) {
+    /* close the epoll fd */
+    close(monitor->epoll_fd);
+
+    /* delete socket hash */
+    int_hash_iterate(monitor->socket_hash, socket_free_callback);
     int_hash_delete(monitor->socket_hash);
-    list_delete(monitor->sockets, NULL);
+
+    /* free monitor memory */
     free(monitor);
 }
 
-void sm_add_socket(int socket_fd, Callback callback, void* user_data,
+SocketInfo* sm_add_socket(int socket_fd, Callback callback, void* user_data,
         int events) {
+    struct epoll_event eevent;
 
-    int id;
     SocketInfo* si;
-    struct pollfd* pf;
 
     /* check if the socket is already there */
     si = int_hash_find(monitor->socket_hash, socket_fd);
-    if(si != NULL) {
-        si->callback = callback;
-        si->user_data = user_data;
-        monitor->poll_list[si->id].events |= events;
-        return;
-    }
-
-    /* get an id */
-    id = monitor->socket_count;
-    monitor->socket_count++;
-
-    /* create and init si struct */
-    si = SocketInfo_alloc();
-    si->callback = callback;
-    si->user_data = user_data;
-    si->id = id;
-    si->socket_fd = socket_fd;
-    si->it = list_push_back(monitor->sockets, si);
-
-    /* init pollfd entry */
-    pf = &monitor->poll_list[id];
-    pf->fd = socket_fd;
-    pf->events = events;
-    pf->revents = 0;
-
-    /* insert socket to the socket hash */
-    int_hash_insert(monitor->socket_hash, si->socket_fd, si);
-}
-
-void sm_replace_callback(int socket_fd, Callback callback, void* user_data) {
-    SocketInfo* si;
-
-    /* find socket */
-    si = int_hash_find(monitor->socket_hash, socket_fd);
-
-    /* replace callback */
-    si->callback = callback;
-    si->user_data = user_data;
-}
-
-void sm_remove_socket(int socket_fd, int events) {
-    SocketInfo* si;
-    int id, old_id;
-
-    /* find socket info */
-    si = int_hash_find(monitor->socket_hash, socket_fd);
     if(si == NULL) {
-        return;
+        si = SocketInfo_alloc();
     }
 
-    /* remove unwantd events */
-    id = si->id;
-    monitor->poll_list[id].events &= ~events;
+    /* set parameters */
+    si->callback = callback;
+    si->user_data = user_data;
+    si->events = events;
+    si->socket_fd = socket_fd;
 
-    /* if there is any event left don't remove it */
-    if(monitor->poll_list[id].events != 0) {
-        return;
-    }
+    /* add to epoll */
+    monitor->socket_count++;
+    eevent.events = events;
+    eevent.data.ptr = si;
+    epoll_ctl(monitor->epoll_fd, EPOLL_CTL_ADD, socket_fd, &eevent);
 
-    /* erase the socket from the hash and the list */
-    si = int_hash_erase(monitor->socket_hash, socket_fd);
-    list_erase(si->it);
-    SocketInfo_free(si);
-    monitor->socket_count--;
-
-    /* erase the pollfd entry by swaping with the last one */
-    old_id = monitor->socket_count;
-    if(old_id != id) {
-        monitor->poll_list[id] = monitor->poll_list[old_id];
-        si = int_hash_find(monitor->socket_hash, monitor->poll_list[id].fd);
-        si->id = id;
-    }
+    return si;
 }
 
-void sm_poll(time_type max_time) {
+void sm_add_events(SocketInfo* si, int events) {
+    struct epoll_event eevent;
+
+    /* set events in epoll */
+    si->events |= events;
+    eevent.events = si->events;
+    eevent.data.ptr = si;
+    epoll_ctl(monitor->epoll_fd, EPOLL_CTL_MOD, si->socket_fd, &eevent);
+}
+
+void sm_del_events(SocketInfo* si, int events) {
+    struct epoll_event eevent;
+
+    /* set events in epoll */
+    si->events &= ~events;
+    eevent.events = si->events;
+    eevent.data.ptr = si;
+    epoll_ctl(monitor->epoll_fd, EPOLL_CTL_MOD, si->socket_fd, &eevent);
+}
+
+void sm_del_socket(SocketInfo* si) {
+    /* erase the socket from the epoll */
+    epoll_ctl(monitor->epoll_fd, EPOLL_CTL_DEL, si->socket_fd, NULL);
+
+    /* clear parameters */
+    si->events = 0;
+    si->callback = NULL;
+    si->user_data = NULL;
+
+    /* decremente the socket count */
+    monitor->socket_count--;
+}
+
+#define MAX_EVENTS 1024
+
+void sm_poll(time_type timeout) {
+    struct epoll_event events[MAX_EVENTS];
     int ret, i;
     SocketInfo* si;
 
     log(INFO, "sockets = %d", monitor->socket_count);
 
     /* poll for events and call the callbacks */
-    ret = poll(monitor->poll_list, monitor->socket_count, max_time);
+    ret = epoll_wait(monitor->epoll_fd, events, MAX_EVENTS, timeout);
     if(ret > 0) {
-        for(i = 0; i < monitor->socket_count; ++i) {
-            /* FIXME if the socket was removed during the execution of the
-             * callback? */
-            /* this is not really bad, because the socket that replaces the
-             * erased will be processed later */
-            if((monitor->poll_list[i].revents) != 0) {
-                log(INFO, "Event on socket %d", monitor->poll_list[i].fd);
-                si = int_hash_find(monitor->socket_hash,
-                        monitor->poll_list[i].fd);
-                si->callback(monitor->poll_list[i].revents, si->user_data);
+        for(i = 0; i < ret; ++i) {
+            si = events[i].data.ptr;
+            /* if the callback is null, the socket
+             * was removed already */
+            if(si->callback != NULL) {
+                log(INFO, "Event on socket %d", si->socket_fd);
+                si->callback(events[i].events, si->user_data);
             }
         }
     } else if(ret < 0) {

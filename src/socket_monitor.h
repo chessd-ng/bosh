@@ -28,6 +28,8 @@
 
 typedef void (*Callback)(int events, void* user_data);
 
+typedef struct SocketInfo SocketInfo;
+
 /*! \brief Init the socket monitor. */
 void sm_init();
 
@@ -35,14 +37,17 @@ void sm_init();
 void sm_quit();
 
 /*! \brief Add a socket to the monitor. */
-void sm_add_socket(int socket_fd, Callback callback, void* user_data,
+SocketInfo* sm_add_socket(int socket_fd, Callback callback, void* user_data,
         int events);
 
-/*! \brief Replace the callback of a socket. */
-void sm_replace_callback(int socket_fd, Callback callback, void* user_data);
+/*! \brief Add a events to be monitored */
+void sm_add_events(SocketInfo* si, int events);
+
+/*! \brief Don't monitor the given events anymore */
+void sm_del_events(SocketInfo* si, int events);
 
 /*! \brief Remove a socket from the monitor. */
-void sm_remove_socket(int socket_fd, int events);
+void sm_del_socket(SocketInfo* si);
 
 /*! \brief Poll the sockets for any activity. */
 void sm_poll(time_type max_time);

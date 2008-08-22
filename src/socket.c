@@ -26,6 +26,8 @@
 
 #include <errno.h>
 
+#include <sys/epoll.h>
+
 #include "socket.h"
 #include "list.h"
 #include "allocator.h"
@@ -41,6 +43,8 @@ typedef struct QueueItem {
 
 struct Socket {
     int fd;
+
+    SocketInfo* si;
 
     DataCallback data_callback;
     void* data_data;
@@ -77,6 +81,7 @@ Socket* sock_new() {
     sock->accept_data = NULL;
     sock->connect_callback = NULL;
     sock->connect_data = NULL;
+    sock->si = NULL;
     sock->status = SOCKET_IDLE;
 
     /* create the output queue */
@@ -95,8 +100,10 @@ void item_delete(QueueItem* item) {
 void sock_close(Socket* sock) {
     /* close the socket */
     if(sock->fd != -1) {
-        sm_remove_socket(sock->fd, POLLIN | POLLOUT);
+        sm_del_socket(sock->si);
         close(sock->fd);
+        sock->si = NULL;
+        sock->fd = -1;
     }
 
     /* free remaining items in queue */
@@ -155,7 +162,7 @@ void sock_flush_data(Socket* sock) {
     }
 
     if(list_empty(sock->output_queue)) {
-        sm_remove_socket(sock->fd, POLLOUT);
+        sm_del_events(sock->si, EPOLLOUT);
     }
 }
 
@@ -166,7 +173,7 @@ void socket_callback(int events, void* user_data) {
     Socket* sock = user_data;
 
     /* Check if we can write */
-    if(events & POLLOUT) {
+    if(events & EPOLLOUT) {
         if(sock->status == SOCKET_CONNECTING) {
             opt_len = sizeof(opt);
             getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &opt, &opt_len);
@@ -177,7 +184,7 @@ void socket_callback(int events, void* user_data) {
                 sock->status = SOCKET_CONNECTED;
                 success = 1;
                 if(sock->data_callback != NULL) {
-                    sm_add_socket(sock->fd, socket_callback, sock, POLLIN);
+                    sm_add_events(sock->si, EPOLLIN);
                 }
             }
             if(sock->connect_callback != NULL) {
@@ -188,24 +195,23 @@ void socket_callback(int events, void* user_data) {
     }
 
     /* check if we can read */
-    if(events & POLLIN) {
+    if(events & EPOLLIN) {
         if(sock->status == SOCKET_LISTENING) {
             if(sock->accept_callback != NULL) {
                 sock->accept_callback(sock->accept_data);
             } else {
-                sm_remove_socket(sock->fd, POLLIN);
+                sm_del_events(sock->si, EPOLLIN);
             }
         } else if(sock->status == SOCKET_CONNECTED) {
             if(sock->data_callback != NULL) {
                 sock->data_callback(sock->data_data);
             } else {
-                sm_remove_socket(sock->fd, POLLIN);
+                sm_del_events(sock->si, EPOLLIN);
             }
         } else {
             log(ERROR, "POLLIN event on idle socket");
         }
     }
-
 }
 
 /*! \brief Asynchronously connect to the given host.
@@ -251,7 +257,7 @@ int sock_connect(Socket* sock, const char* host, int port) {
     } 
 
     /* wait the connection to be completed */
-    sm_add_socket(sock->fd, socket_callback, sock, POLLOUT);
+    sock->si = sm_add_socket(sock->fd, socket_callback, sock, EPOLLOUT);
 
     sock->status = SOCKET_CONNECTING;
 
@@ -308,7 +314,7 @@ void sock_send(Socket* sock, void* buffer, size_t len, int more) {
     }
 
     if(was_empty && !list_empty(sock->output_queue)) {
-        sm_add_socket(sock->fd, socket_callback, sock, POLLOUT);
+        sm_add_events(sock->si, EPOLLOUT);
     }
 }
 
@@ -360,7 +366,9 @@ int sock_listen(Socket* sock, int port) {
 
     /* monitor incoming connections */
     if(sock->accept_callback != NULL) {
-        sm_add_socket(sock->fd, socket_callback, sock, POLLIN);
+        sock->si = sm_add_socket(sock->fd, socket_callback, sock, EPOLLIN);
+    } else {
+        sock->si = sm_add_socket(sock->fd, socket_callback, sock, 0);
     }
 
     return 1;
@@ -388,6 +396,7 @@ Socket* sock_accept(Socket* sock) {
 
     client->fd = fd;
     client->status = SOCKET_CONNECTED;
+    client->si = sm_add_socket(fd, socket_callback, client, 0);
 
     return client;
 }
@@ -408,7 +417,7 @@ void sock_set_data_callback(Socket* sock, DataCallback callback,
     sock->data_data = user_data;
 
     if(sock->status == SOCKET_CONNECTED && sock->data_callback != NULL) {
-        sm_add_socket(sock->fd, socket_callback, sock, POLLIN);
+        sm_add_events(sock->si, EPOLLIN);
     }
 }
 
@@ -423,7 +432,7 @@ void sock_set_accept_callback(Socket* sock, AcceptCallback callback,
     sock->accept_data = user_data;
 
     if(sock->status == SOCKET_LISTENING && sock->accept_callback != NULL) {
-        sm_add_socket(sock->fd, socket_callback, sock, POLLIN);
+        sm_add_events(sock->si, EPOLLIN);
     }
 }
 

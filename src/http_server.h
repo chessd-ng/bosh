@@ -41,7 +41,12 @@ typedef struct HttpRequest {
 
 typedef void(*hs_request_callback)(void* user_data, const HttpRequest* request);
 
+typedef void(*hc_close_callback)(void* user_data);
+
 HttpServer* hs_new(iks* config, hs_request_callback callback, void* user_data);
+
+void hc_set_close_callback(HttpConnection* connection,
+        hc_close_callback callback, void* user_data);
 
 void hs_delete(HttpServer* server);
 

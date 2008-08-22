@@ -313,7 +313,7 @@ int jc_handle_stanza(void* _j_client, int type, iks* stanza) {
         list_push_back(j_client->output_queue, stanza);
     } else if(type == IKS_NODE_ERROR || type == IKS_NODE_STOP) {
         /* close the connection in case of error or stop */
-        log(INFO, "Jabber connection ended sid=%" PRId64, j_client->sid);
+        log(WARNING, "Jabber connection ended sid=%" PRId64, j_client->sid);
         iks_delete(stanza);
         j_client->alive = 0;
     } else {
@@ -469,6 +469,21 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
             j_client->sid, j_client->sock);
 }
 
+
+/*! \brief Remove the http connection.
+ *
+ * This function is called by the http server to notify that the connection was
+ * closed before sending a response */
+void jc_clear_http(void* _j_client) {
+
+    JabberClient* j_client = _j_client;
+
+    log(WARNING, "Cleared http connection on sid=%" PRId64, j_client->sid);
+
+    j_client->connection = NULL;
+    j_client->timestamp = get_time();
+}
+
 /*! \brief Set the client request */
 void jc_set_http(JabberClient* j_client, HttpConnection* connection, uint64_t rid) {
     /* if we already have one, drop it */
@@ -483,6 +498,9 @@ void jc_set_http(JabberClient* j_client, HttpConnection* connection, uint64_t ri
 
     /* flush messages */
     jc_flush_messages(j_client);
+
+    /* set thew close callback */
+    hc_set_close_callback(connection, jc_clear_http, j_client);
 }
 
 /*! \brief Handle an incoming request */
@@ -641,7 +659,7 @@ JabberBind* jb_new(iks* config) {
     return jb;
 }
 
-/*! \brief destroy a bin server*/
+/*! \brief destroy a bind server*/
 void jb_delete(JabberBind* bind) {
     JabberClient* j_client;
 

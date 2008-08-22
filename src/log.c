@@ -202,6 +202,7 @@ void _log(const char* function_name, int level, const char* format, ...) {
     /* print the message to the log */
     va_start(args, format);
     vfprintf(log_conf.file, new_format, args);
+    fflush(log_conf.file);
     free(new_format);
 
     /* check if the file size reached the rotate size */

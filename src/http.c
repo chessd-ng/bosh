@@ -40,23 +40,29 @@ void http_delete(HttpHeader* header) {
 }
 
 HttpHeader* http_parse(const char* str) {
-    const char* end_line;
+    const char* end_line,* next_line;
     const char* colon;
     int fail = 0;
     int i;
     HttpHeader* header;
 
-    if(strstr(str, HTTP_LINE_SEP HTTP_LINE_SEP) == NULL)
+    if(strstr(str, HTTP_LINE_SEP HTTP_LINE_SEP) == NULL &&
+            strstr(str, "\n\n") == NULL) {
         return NULL;
+    }
     
     header = malloc(sizeof(HttpHeader));
     header->n_fields = 0;
 
     for(i = 0; i < MAX_HTTP_FIELDS; ++i) {
-        end_line = strstr(str, HTTP_LINE_SEP);
+        end_line = strstr(str, "\n");
         if(end_line == NULL) {
             fail = 1;
             break;
+        }
+        next_line = end_line + 1;
+        if(end_line > str && *(end_line-1) == '\r') {
+            end_line--;
         }
         if(end_line == str)
             break;
@@ -69,7 +75,7 @@ HttpHeader* http_parse(const char* str) {
         header->fields[i].value = strndup(colon + 1, end_line - (colon + 1));
         header->n_fields ++;
 
-        str = end_line + 2;
+        str = next_line;
     }
     if(fail) {
         http_delete(header);
