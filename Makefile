@@ -33,31 +33,30 @@ all: ${TARGET}
 -include ${DEPS}
 
 ${TARGET}: ${OBJECTS}
-	${CC} -o ${TARGET} ${OBJECTS} ${CFLAGS} ${LDLIBS}
+	@echo "LD $@..."
+	@${CC} -o ${TARGET} ${OBJECTS} ${CXXFLAGS} ${LDLIBS}
 
-.deps/%.d: ${SRCDIR}/%.cc
+.deps/%.d:
 	@mkdir -p $(dir $@)
-	${CXX} ${CXXFLAGS} -MM $< | sed 's/\(^[^ \.]*\)\.o/${OBJDIR}\/\1.o ${DEPSDIR}\/\1.d/' > $@
+	@touch $@
 
-.deps/%.d: ${SRCDIR}/%.c
+${OBJDIR}/%.o: ${SRCDIR}/%.c
 	@mkdir -p $(dir $@)
-	${CC} ${CFLAGS} -MM $< | sed 's/\(^[^ \.]*\)\.o/${OBJDIR}\/\1.o ${DEPSDIR}\/\1.d/' > $@
-
-obj/%.o: ${SRCDIR}/%.cc
-	@mkdir -p $(dir $@)
-	${CXX} ${CXXFLAGS} -c -o $@ $<
-
-obj/%.o: ${SRCDIR}/%.c
-	@mkdir -p $(dir $@)
-	${CC} ${CFLAGS} -c -o $@ $<
+	@echo "CC $<..."
+	@${CC} ${CFLAGS} -o $@ -c $< -MMD -MP -MF $(patsubst ${OBJDIR}/%.o,${DEPSDIR}/%.d,$@)
 
 clean: clean-target clean-obj
 
+dist-clean: clean-target clean-obj clean-deps
+
 clean-target:
-	rm -f ${TARGET}
+	@echo "Cleaning executable..."
+	@rm -f ${TARGET}
 
 clean-obj:
-	rm -f ${OBJECTS}
+	@echo "Cleaning objects..."
+	@rm -f ${OBJECTS}
 
-clean-depends:
-	rm -rf ${DEPSDIR}
+clean-deps:
+	@echo "Cleaning dependencies..."
+	@rm -rf ${DEPSDIR}
