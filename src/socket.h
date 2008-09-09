@@ -33,6 +33,7 @@ typedef struct Socket Socket;
 
 typedef void(*DataCallback)(void* user_data);
 typedef void(*AcceptCallback)(void* user_data);
+typedef void(*ErrorCallback)(void* user_data, int code);
 typedef void(*ConnectCallback)(int success, void* user_data);
 
 Socket *sock_new();
@@ -60,6 +61,9 @@ void sock_set_accept_callback(Socket* sock, AcceptCallback callback,
         void* user_data);
 
 void sock_set_connect_callback(Socket* sock, ConnectCallback callback,
+        void* user_data);
+
+void sock_set_error_callback(Socket* sock, ErrorCallback callback,
         void* user_data);
 
 #endif

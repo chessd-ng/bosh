@@ -347,6 +347,17 @@ void jc_read_jabber(void* _j_client) {
     }
 }
 
+/*! \brief Handle error on the jabber connection */
+void jc_handle_error(void* _j_client, int code) {
+    JabberClient* j_client = _j_client;
+
+    log(WARNING, "Error on jabber connection sid=%" PRId64 ": %s",
+            strerror(code));
+
+    jb_close_client(j_client);
+}
+
+
 /* \brief Report a error to the client */
 void jc_report_error(HttpConnection* connection, enum BIND_ERROR_CODE code) {
     char* body;
@@ -363,12 +374,13 @@ uint64_t gen_sid() {
     return lrand48() | (((uint64_t)lrand48())<<32);
 }
 
-void jc_answer_creation(int success, void* user_data) {
+void jc_answer_creation(int code, void* user_data) {
     JabberClient* j_client = user_data;
 
-    if(success == 0) {
+    if(code != 0) {
         /* connection has failed */
-        log(WARNING, "Could not connect to the jabber server sid=%" PRId64, j_client->sid);
+        log(WARNING, "Could not connect to the jabber server sid=%" PRId64
+                ": %s" , j_client->sid, strerror(code));
 
         /* close the client */
         jb_close_client(j_client);
@@ -460,6 +472,7 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
     /* set callbacks */
     sock_set_data_callback(j_client->sock, jc_read_jabber, j_client);
     sock_set_connect_callback(j_client->sock, jc_answer_creation, j_client);
+    sock_set_error_callback(j_client->sock, jc_handle_error, j_client);
 
     /* send response */
     asprintf(&tmp, SESSION_RESPONSE, j_client->sid);

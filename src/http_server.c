@@ -108,6 +108,8 @@ static void hc_delete(HttpConnection* connection) {
 
 static void hc_read(void* _connection);
 
+static void hc_handle_error(void* _connection, int error);
+
 /*! \brief Create an http connetion */
 static HttpConnection* hc_create(HttpServer* server, Socket* sock) {
     HttpConnection* connection;
@@ -128,6 +130,8 @@ static HttpConnection* hc_create(HttpServer* server, Socket* sock) {
 
     /* start to monitor the connection */
     sock_set_data_callback(sock, hc_read, connection);
+
+    sock_set_error_callback(sock, hc_handle_error, connection);
 
     log(INFO, "Http connection created socket=%p", connection->sock);
 
@@ -235,6 +239,15 @@ static void hc_read(void* _connection) {
     if(sock_status(connection->sock) != SOCKET_CONNECTED) {
         hc_delete(connection);
     }
+}
+
+/*! \brief Handle an error on the socket */
+static void hc_handle_error(void* _connection, int code) {
+    HttpConnection* connection = _connection;
+
+    log(WARNING, "Error on http connection: %s", strerror(code));
+
+    hc_delete(connection);
 }
 
 /*! \breif Receive an incoming connection */

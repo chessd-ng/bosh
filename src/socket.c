@@ -55,6 +55,9 @@ struct Socket {
     ConnectCallback connect_callback;
     void* connect_data;
 
+    ErrorCallback error_callback;
+    void* error_data;
+
     list* output_queue;
 
     SocketStatus status;
@@ -81,6 +84,8 @@ Socket* sock_new() {
     sock->accept_data = NULL;
     sock->connect_callback = NULL;
     sock->connect_data = NULL;
+    sock->error_callback = NULL;
+    sock->error_data = NULL;
     sock->si = NULL;
     sock->status = SOCKET_IDLE;
 
@@ -168,34 +173,38 @@ void sock_flush_data(Socket* sock) {
 
 /*" \brief Handle vents in the socket */
 void socket_callback(int events, void* user_data) {
-    int opt, success;
+    int opt;
     socklen_t opt_len;
     Socket* sock = user_data;
 
-    /* Check if we can write */
-    if(events & EPOLLOUT) {
+    /* check if there was an error on the socket */
+    if(events & (EPOLLERR | EPOLLHUP)) {
+        getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &opt, &opt_len);
+        sock_close(sock);
+        if(sock->error_callback != NULL) {
+            sock->error_callback(sock->error_data, opt);
+        }
+    } else if(events & EPOLLOUT) {
+        /* Check if we can write */
         if(sock->status == SOCKET_CONNECTING) {
             opt_len = sizeof(opt);
             getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &opt, &opt_len);
             if(opt != 0) {
                 sock->status = SOCKET_IDLE;
-                success = 0;
             } else {
                 sock->status = SOCKET_CONNECTED;
-                success = 1;
                 if(sock->data_callback != NULL) {
                     sm_add_events(sock->si, EPOLLIN);
                 }
             }
             if(sock->connect_callback != NULL) {
-                sock->connect_callback(success, sock->connect_data);
+                sock->connect_callback(opt, sock->connect_data);
             }
+        } else if(sock->status == SOCKET_CONNECTED) {
+            sock_flush_data(sock);
         }
-        sock_flush_data(sock);
-    }
-
-    /* check if we can read */
-    if(events & EPOLLIN) {
+    } else if(events & EPOLLIN) {
+        /* check if we can read */
         if(sock->status == SOCKET_LISTENING) {
             if(sock->accept_callback != NULL) {
                 sock->accept_callback(sock->accept_data);
@@ -436,11 +445,11 @@ void sock_set_accept_callback(Socket* sock, AcceptCallback callback,
     }
 }
 
-/*! \brief Set the conenct callback.
+/*! \brief Set the connect callback.
  *
  * This callback will be called when a connection request is completed. The
- * parameter success of the callback will be 1 if the connection was
- * succesfull, 0 otherwise. */
+ * parameter success of the callback will be 0 if the connection was
+ * succesfull, otherwise it will be the error code. */
 void sock_set_connect_callback(Socket* sock, ConnectCallback callback,
         void* user_data) {
 
@@ -448,7 +457,17 @@ void sock_set_connect_callback(Socket* sock, ConnectCallback callback,
     sock->connect_data = user_data;
 }
 
+/*! \brief Set the error callback.
+ *
+ * This callback will be called when an error occur on the socket. */
+void sock_set_error_callback(Socket* sock, ErrorCallback callback,
+        void* user_data) {
 
+    sock->error_callback = callback;
+    sock->error_data = user_data;
+}
+
+/*! \brief Returns the socket fd */
 int sock_fd(Socket* sock) {
     return sock->fd;
 }
