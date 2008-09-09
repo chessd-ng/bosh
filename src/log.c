@@ -66,7 +66,8 @@ void log_set_file(const char* filename) {
         /* open log file, if failed, log to stdout */
         log_conf.file = fopen(filename, "aw");
         if(log_conf.file == NULL) {
-            fprintf(stderr, "Could not open %s: %s\n", filename, strerror(errno));
+            fprintf(stderr, "Could not open %s: %s\n", filename,
+                    strerror(errno));
             log_conf.file = stdout;
         } else {
             /* store the filename */
@@ -88,10 +89,11 @@ void log_set_rotate(const char* rotate_size, const char* rotate_command) {
 
     /* parse rotate size */
     ret = sscanf(rotate_size, "%" PRIu64 " %c", &log_conf.rotate_size, &unit);
-    if(ret == 0) {
-        fprintf(stderr, "Unable to parse rotate size, log rotation is disabled\n");
+    if(ret != 2) {
+        fprintf(stderr, "Unable to parse rotate size, log rotation"
+                " is disabled\n");
         log_conf.rotate_size = 0;
-    } else if(ret == 2) {
+    } else {
         if(tolower(unit) == 'b') {
             log_conf.rotate_size *= 1ull;
         } else if(tolower(unit) == 'k') {
@@ -101,7 +103,8 @@ void log_set_rotate(const char* rotate_size, const char* rotate_command) {
         } else if(tolower(unit) == 'g') {
             log_conf.rotate_size *= 1ull<<30;
         } else {
-            fprintf(stderr, "Unable to parse rotate size, log rotation is disabled\n");
+            fprintf(stderr, "Unable to parse rotate size, log"
+                    " rotation is disabled\n");
             log_conf.rotate_size = 0;
         }
     }
@@ -154,20 +157,24 @@ void log_rotate() {
     rename(log_conf.filename, new_name);
 
     /* compress the log file */
+#if 0
     if(log_conf.compression_command != NULL) {
         if(fork() == 0) {
             /* prepare command line */
-            asprintf(&argument, "%s '%s'", log_conf.compression_command, new_name);
+            asprintf(&argument, "%s '%s'", log_conf.compression_command,
+                    new_name);
             execlp("sh", "sh", "-c", argument, NULL);
             perror("Error compressing log file");
             exit(1);
         }
     }
+#endif
 
     /* open a new log file */
     log_conf.file = fopen(log_conf.filename, "aw");
     if(log_conf.file == NULL) {
-        fprintf(stderr, "Could not open %s: %s\n", log_conf.filename, strerror(errno));
+        fprintf(stderr, "Could not open %s: %s\n", log_conf.filename,
+                strerror(errno));
         log_conf.file = stdout;
     }
 
@@ -197,7 +204,8 @@ void _log(const char* function_name, int level, const char* format, ...) {
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&t));
 
     /* modify the format received */
-    asprintf(&new_format, "%s %s %s: %s\n", time_str, function_name, VERBOSE_LEVEL_NAME[level], format);
+    asprintf(&new_format, "%s %s %s: %s\n", time_str, function_name,
+            VERBOSE_LEVEL_NAME[level], format);
 
     /* print the message to the log */
     va_start(args, format);
