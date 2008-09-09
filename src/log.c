@@ -143,7 +143,6 @@ void log_init(iks* config) {
 void log_rotate() {
     time_t t;
     char* new_name = NULL;
-    char* argument = NULL;
     char time_str[512];
 
     /* close current log file */
@@ -158,6 +157,7 @@ void log_rotate() {
 
     /* compress the log file */
 #if 0
+    char* argument = NULL;
     if(log_conf.compression_command != NULL) {
         if(fork() == 0) {
             /* prepare command line */
