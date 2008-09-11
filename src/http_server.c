@@ -235,6 +235,8 @@ static void hc_read(void* _connection) {
         if(connection->header != NULL) {
             hc_process(connection);
         }
+    } else {
+        log(INFO, "No data in socket\n");
     }
     if(sock_status(connection->sock) != SOCKET_CONNECTED) {
         hc_delete(connection);

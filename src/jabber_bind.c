@@ -509,11 +509,11 @@ void jc_set_http(JabberClient* j_client, HttpConnection* connection, uint64_t ri
     j_client->timestamp = get_time();
     j_client->rid = rid;
 
-    /* flush messages */
-    jc_flush_messages(j_client);
-
     /* set thew close callback */
     hc_set_close_callback(connection, jc_clear_http, j_client);
+
+    /* flush messages */
+    jc_flush_messages(j_client);
 }
 
 /*! \brief Handle an incoming request */
