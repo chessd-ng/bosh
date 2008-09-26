@@ -212,15 +212,15 @@ void jc_drop_request(JabberClient* j_client, int terminate) {
         asprintf(&body, EMPTY_RESPONSE);
     }
 
+    log(INFO, "Request response sid=%" PRId64 " message: %s", j_client->sid,
+            body);
+
     /* answer the request */
     hs_answer_request(j_client->connection, body, strlen(body));
     j_client->connection = NULL;
 
     /* update last activity */
     j_client->timestamp = get_time();
-
-    log(INFO, "Request response sid=%" PRId64 " message: %s", j_client->sid,
-            body);
 }
 
 /*! \brief Free an iks struct */
