@@ -24,6 +24,10 @@
 
 #include "allocator.h"
 
+/* Macro used to iterate through list elements */
+#define list_foreach(it, l) for(it = list_begin(l); it != list_end(l); it = list_next(it))
+
+
 /*! \brief A callback function that receies one element of the list */
 typedef void(*proc)(void *v);
 
@@ -187,7 +191,14 @@ static inline list_iterator list_find(list* l, void* v, compare_function func) {
     return list_end(l);
 }
 
-/* Macro used to iterate through list elements */
-#define list_foreach(it, l) for(it = list_begin(l); it != list_end(l); it = list_next(it))
+/*! \brief Returns the number of elements in the list, this takes linear time */
+static inline int list_size(list *l) {
+    int size = 0;
+    list_iterator it;
+    list_foreach(it, l) {
+        size ++;
+    }
+    return size;
+}
 
 #endif

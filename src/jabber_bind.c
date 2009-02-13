@@ -57,6 +57,11 @@
 
 #define ERROR_RESPONSE "<body type='%s' condition='%s' xmlns='http://jabber.org/protocol/httpbind'/>"
 
+#define STATUS_HTML "<html><body>" \
+                        "<p>Uptime: %s</p>" \
+                        "<p>Clients: %d</p>" \
+                        "<p>Maximum clients: %d</p>" \
+                    "</body></html>"
 
 static inline int compare_sid(uint64_t s1, uint64_t s2) {
     return s1 == s2;
@@ -99,12 +104,15 @@ typedef struct JabberClient {
 
 
 struct JabberBind {
-	list* jabber_connections;    /* list of jabber connecions                 */
+	list* jabber_connections;    /* list of jabber connections                */
 	uint64_hash* sids;           /* hash of used sids                         */
 	HttpServer* server;          /* pointer to the http server                */
 
     int jabber_port;             /* port to connect to the jabber server      */
     int session_timeout;         /* bosh session timeout                      */
+    time_type start_time;        /* the time when the server started          */
+    int client_count;            /* number of active connections              */
+    int max_client_count;        /* the maximum number of clients achieved    */
 };
 
 /* Allocators */
@@ -190,7 +198,8 @@ void jc_flush_messages(JabberClient* j_client) {
                 j_client->sid, body);
 
         /* send messages */
-        hs_answer_request(j_client->connection, body, strlen(body));
+        hs_answer_request(j_client->connection, body, strlen(body),
+                HTTP_XML_CONTENT);
         j_client->connection = NULL;
 
         /* update last activity */
@@ -213,7 +222,8 @@ void jc_drop_request(JabberClient* j_client, int terminate) {
     }
 
     /* answer the request */
-    hs_answer_request(j_client->connection, body, strlen(body));
+    hs_answer_request(j_client->connection, body, strlen(body),
+            HTTP_XML_CONTENT);
     j_client->connection = NULL;
 
     /* update last activity */
@@ -250,6 +260,7 @@ void jb_close_client(JabberClient* j_client) {
 
     /* erase the client from the list of clients */
     list_erase(j_client->it);
+    bind->client_count --;
 
     /* erase the client's sid */
     uint64_hash_erase(bind->sids, j_client->sid);
@@ -366,7 +377,7 @@ void jc_report_error(HttpConnection* connection, enum BIND_ERROR_CODE code) {
     asprintf(&body, ERROR_RESPONSE, ERROR_TABLE[code][0], ERROR_TABLE[code][1]);
 
     /* send the message */
-    hs_answer_request(connection, body, strlen(body));
+    hs_answer_request(connection, body, strlen(body), HTTP_XML_CONTENT);
 }
 
 /*! \brief Returns a random sid */
@@ -464,6 +475,10 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
     j_client->alive = 1;
     j_client->timestamp = get_time();
     j_client->it = list_push_back(bind->jabber_connections, j_client);
+    bind->client_count ++;
+    if(bind->client_count > bind->max_client_count) {
+        bind->max_client_count = bind->client_count;
+    }
 
     /* send jabber header */
     asprintf(&tmp, JABBER_HEADER, host);
@@ -476,7 +491,7 @@ void jb_connect_client(JabberBind* bind, HttpConnection* connection,
 
     /* send response */
     asprintf(&tmp, SESSION_RESPONSE, j_client->sid);
-    hs_answer_request(connection, tmp, strlen(tmp));
+    hs_answer_request(connection, tmp, strlen(tmp), HTTP_XML_CONTENT);
 
     log(INFO, "New bosh session: sid=%" PRId64 " socket=%p",
             j_client->sid, j_client->sock);
@@ -516,15 +531,12 @@ void jc_set_http(JabberClient* j_client, HttpConnection* connection, uint64_t ri
     jc_flush_messages(j_client);
 }
 
-/*! \brief Handle an incoming request */
-void jb_handle_request(void* _bind, const HttpRequest* request) {
-    JabberBind* bind;
+/*! \brief Handle an incoming http post */
+void jb_handle_http_post(JabberBind* bind, const HttpRequest* request) {
     JabberClient* j_client;
     iks* message, *stanza;
     char* tmp;
     uint64_t sid, rid;
-
-    bind = _bind;
 
     /* parse the content */
     message = iks_tree(request->data, request->data_size, NULL);
@@ -585,6 +597,50 @@ void jb_handle_request(void* _bind, const HttpRequest* request) {
     iks_delete(message);
 }
 
+/*! \brief Handle an incoming http get */
+void jb_handle_http_get(JabberBind* bind, const HttpRequest* request) {
+    char* html;
+    char* uptime_str;
+    int uptime, days, hours, minutes, seconds;
+
+    uptime = (int)(get_time() - bind->start_time)/1000;
+    seconds = uptime % 60;
+    uptime /= 60;
+    minutes = uptime % 60;
+    uptime /= 60;
+    hours = uptime % 24;
+    uptime /= 24;
+    days = uptime;
+
+    asprintf(&uptime_str, "%d days, %02d:%02d:%02d", days, hours, minutes,
+            seconds);
+
+    asprintf(&html, STATUS_HTML, uptime_str, bind->client_count,
+            bind->max_client_count);
+
+    hs_answer_request(request->connection, html, strlen(html),
+            HTTP_HTML_CONTENT);
+
+    free(uptime_str);
+}
+
+/*! \brief Handle an incoming request */
+void jb_handle_request(void* _bind, const HttpRequest* request) {
+    JabberBind* bind;
+
+    bind = _bind;
+
+    if(strcmp(request->header->type, "POST") == 0) {
+        jb_handle_http_post(bind, request);
+    } else if(strcmp(request->header->type, "GET") == 0) {
+        jb_handle_http_get(bind, request);
+    } else {
+        log(WARNING, "Unknown http request");
+        jc_report_error(request->connection, BAD_FORMAT);
+        return;
+    }
+}
+
 /*! \brief Run the server until a SIGINT or SIGTERM signal is caught */
 void jb_run(JabberBind* bind) {
     time_type max_time;
@@ -615,7 +671,7 @@ void jb_run(JabberBind* bind) {
     }
 }
 
-/* !\brief crete a new bind server */
+/*! \brief crete a new bind server */
 JabberBind* jb_new(iks* config) {
     JabberBind* jb;
     iks* bind_config;
@@ -665,6 +721,9 @@ JabberBind* jb_new(iks* config) {
     /* set other values */
     jb->jabber_connections = list_new();
     jb->sids = uint64_hash_new();
+    jb->start_time = get_time();
+    jb->client_count = 0;
+    jb->max_client_count = 0;
 
     /* seed the random generator */
     srand48(get_time());

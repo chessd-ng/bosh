@@ -34,13 +34,12 @@
 
 #define HTTP_PORT 8080
 
-#define HTML_ERROR "<html><head> \
-						<title>400 Bad Request</title> \
-						</head><body> \
-						<h1>Bad Request</h1> \
-						<p>%s</p> \
-						<hr> \
-						</body></html>"
+#define HTML_ERROR "<html><head>" \
+						"<title>400 Bad Request</title>" \
+						"</head><body>" \
+						"<h1>Bad Request</h1>" \
+						"<p>%s</p>" \
+						"</body></html>"
 
 #define MAX_BUFFER_SIZE (1024*128)
 
@@ -72,8 +71,8 @@ static void hc_report_error(HttpConnection* connection, const char* msg) {
 	char* body = NULL;
 	char* header = NULL;
 
-	header = make_http_head(500, strlen(msg));
 	asprintf(&body, HTML_ERROR, msg);
+	header = make_http_head(500, strlen(body), HTTP_HTML_CONTENT);
 
     sock_send(connection->sock, header, strlen(header), 1);
     sock_send(connection->sock, body, strlen(body), 0);
@@ -157,12 +156,10 @@ static void hc_process(HttpConnection* connection) {
 
     /* get the content lenght */
     tmp = http_get_field(connection->header, "Content-Length");
-
-    /* absence of content lenght is not supported */
     if(tmp == NULL) {
-        log(WARNING, "Invalid http header, missing Content-Length");
-        hc_report_error(connection, "Invalid http header, missing Content-Length");
-        return;
+        content_size = 0;
+    } else {
+        content_size = atoi(tmp);
     }
 
     /* find the beginning of the content */
@@ -170,7 +167,6 @@ static void hc_process(HttpConnection* connection) {
 
     header_size = data - connection->buffer;
 
-    content_size = atoi(tmp);
 
     /* check if the message is bigger than current buffer size */
     if(content_size + header_size >= MAX_BUFFER_SIZE) {
@@ -210,16 +206,16 @@ static void hc_process(HttpConnection* connection) {
 /*! \brief Read the header of a request */
 static void hc_read(void* _connection) {
     HttpConnection* connection = _connection;
-    int remaing_buffer;
+    int remaining_buffer;
     ssize_t ret;
 
-    /* compute the ramaining buffer space */
-    remaing_buffer = MAX_BUFFER_SIZE - connection->buffer_size;
+    /* compute the remaining buffer space */
+    remaining_buffer = MAX_BUFFER_SIZE - connection->buffer_size;
 
     /* receive some data */
     ret = sock_recv(connection->sock,
                  connection->buffer + connection->buffer_size,
-                 remaing_buffer);
+                 remaining_buffer);
 
     if(ret > 0) {
         /* update the buffer */
@@ -233,6 +229,7 @@ static void hc_read(void* _connection) {
 
         /* if the header is complete, parser the content */
         if(connection->header != NULL) {
+            log(INFO, "Received http message from %d: %s", sock_fd(connection->sock), connection->buffer);
             hc_process(connection);
         }
     } else {
@@ -343,15 +340,15 @@ void hs_delete(HttpServer* server) {
  * \param size is the size of the content
  */
 void hs_answer_request(HttpConnection* connection,
-                       char* msg, size_t size) {
+                       char* msg, size_t size, const char* content_type) {
     char* header;
 
     /* create the header */
-    header = make_http_head(200, size);
+    header = make_http_head(200, size, content_type);
 
     /* send the header and the content */
     sock_send(connection->sock, header, strlen(header), 1);
-    sock_send(connection->sock, msg, strlen(msg), 0);
+    sock_send(connection->sock, msg, size, 0);
 
     /* clear the callback */
     connection->close_callback = NULL;

@@ -8,7 +8,7 @@
     />
     <log
         filename='log/bosh.log'
-        verbose='ERROR'
+        verbose='INFO'
         rotate_size='200M'
     />
 </jbind>

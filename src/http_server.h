@@ -50,6 +50,6 @@ void hc_set_close_callback(HttpConnection* connection,
 
 void hs_delete(HttpServer* server);
 
-void hs_answer_request(HttpConnection* connection, char* msg, size_t size);
+void hs_answer_request(HttpConnection* connection, char* msg, size_t size, const char* content_type);
 
 #endif
