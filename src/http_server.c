@@ -229,7 +229,6 @@ static void hc_read(void* _connection) {
 
         /* if the header is complete, parser the content */
         if(connection->header != NULL) {
-            log(INFO, "Received http message from %d: %s", sock_fd(connection->sock), connection->buffer);
             hc_process(connection);
         }
     } else {
