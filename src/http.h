@@ -24,12 +24,17 @@
 
 #define HTTP_LINE_SEP "\r\n"
 
+#define HTTP_XML_CONTENT "text/xml"
+#define HTTP_HTML_CONTENT "text/html"
+
 typedef struct HttpField {
     char* name;
     char* value;
 } HttpField;
 
 typedef struct HttpHeader {
+    char* type;
+    char* path;
     HttpField fields[MAX_HTTP_FIELDS];
     int n_fields;
 } HttpHeader;
@@ -38,7 +43,7 @@ void http_delete(HttpHeader* header);
 
 HttpHeader* http_parse(const char* str);
 
-char* make_http_head(int http_code, size_t data_size);
+char* make_http_head(int http_code, size_t data_size, const char* content_type);
 
 const char* http_get_field(HttpHeader* header, const char* field);
 

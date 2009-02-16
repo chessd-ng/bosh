@@ -24,12 +24,15 @@
 #include "http.h"
 
 #define HTTP_HEADER "HTTP/1.1 %d %s\r\n" \
-                        "Content-type: text/xml; charset=utf-8\r\n" \
+                        "Content-type: %s; charset=UTF-8\r\n" \
                         "Content-Length: %d\r\n" \
                         "\r\n"
 
 void http_delete(HttpHeader* header) {
     int i;
+
+    free(header->type);
+    free(header->path);
 
     for(i = 0; i < header->n_fields; ++i) {
         free(header->fields[i].name);
@@ -39,22 +42,80 @@ void http_delete(HttpHeader* header) {
     free(header);
 }
 
+/* split the string using delim as a separator */
+int strsplit(const char* str, const char* end_str, char** parts,
+        int n, char delim) {
+    char** end_parts = parts + n;
+    const char* tmp = str;
+    int ret = 0;
+
+    while(str != end_str && parts != end_parts) {
+        tmp = str;
+        for(;tmp!=end_str && *tmp!=delim;++tmp);
+        *parts = strndup(str, tmp-str);
+        ++parts; ++ret;
+        for(;tmp!=end_str && *tmp==delim;++tmp);
+        str = tmp;
+    }
+
+    return ret;
+}
+
+/* find any character containing in the string delim */
+const char* strstrany(const char* str, const char* delim) {
+    int i, N = strlen(delim);
+
+    for(;;++str) {
+        for(i = 0; i < N; ++i) {
+            if(*str==delim[i]) {
+                return str;
+            }
+        }
+    }
+    return NULL;
+}
+
+/* parse http header */
 HttpHeader* http_parse(const char* str) {
     const char* end_line,* next_line;
     const char* colon;
+    char* parts[3];
     int fail = 0;
-    int i;
+    int i, n;
     HttpHeader* header;
 
+    /* the http header ends with two line seps, if it is not there,
+     * then is not complete */
     if(strstr(str, HTTP_LINE_SEP HTTP_LINE_SEP) == NULL &&
             strstr(str, "\n\n") == NULL) {
         return NULL;
     }
     
+    /* alloc header struct */
     header = malloc(sizeof(HttpHeader));
     header->n_fields = 0;
 
-    for(i = 0; i < MAX_HTTP_FIELDS; ++i) {
+    /* read type */
+    end_line = strstrany(str, HTTP_LINE_SEP);
+    n = strsplit(str, end_line, parts, 3, ' ');
+    if(n == 3) {
+        header->type = parts[0];
+        header->path = parts[1];
+        parts[0] = parts[1] = NULL;
+    } else {
+        fail = 1;
+    }
+
+    /* free uused data */
+    for(i = 0; i < n; ++i) {
+        if(parts[i] != NULL) {
+            free(parts[i]);
+        }
+    }
+
+
+    /* read http fields */
+    for(i = 0; i < MAX_HTTP_FIELDS && fail == 0; ++i) {
         end_line = strstr(str, "\n");
         if(end_line == NULL) {
             fail = 1;
@@ -77,6 +138,8 @@ HttpHeader* http_parse(const char* str) {
 
         str = next_line;
     }
+
+
     if(fail) {
         http_delete(header);
         return NULL;
@@ -85,7 +148,7 @@ HttpHeader* http_parse(const char* str) {
     }
 }
 
-char* make_http_head(int code, size_t data_size) {
+char* make_http_head(int code, size_t data_size, const char* content_type) {
 	char* msg;
 	const char* code_msg;
 
@@ -95,7 +158,7 @@ char* make_http_head(int code, size_t data_size) {
 		code_msg = "ERROR";
 	}
 
-	asprintf(&msg, HTTP_HEADER, code, code_msg, (int)data_size);
+	asprintf(&msg, HTTP_HEADER, code, code_msg, content_type, (int)data_size);
 
 	return msg;
 }

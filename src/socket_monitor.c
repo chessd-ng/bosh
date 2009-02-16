@@ -28,6 +28,7 @@
 #include "log.h"
 
 #define MAX_SOCKETS (1024*16)
+#define MAX_EVENTS 1024
 
 static unsigned int hash_int(const int i) {
     return i;
@@ -92,6 +93,7 @@ SocketInfo* sm_add_socket(int socket_fd, Callback callback, void* user_data,
     si = int_hash_find(monitor->socket_hash, socket_fd);
     if(si == NULL) {
         si = SocketInfo_alloc();
+        int_hash_insert(monitor->socket_hash, socket_fd, si);
     }
 
     /* set parameters */
@@ -102,6 +104,7 @@ SocketInfo* sm_add_socket(int socket_fd, Callback callback, void* user_data,
 
     /* add to epoll */
     monitor->socket_count++;
+    memset(&eevent, 0, sizeof(eevent));
     eevent.events = events;
     eevent.data.ptr = si;
     epoll_ctl(monitor->epoll_fd, EPOLL_CTL_ADD, socket_fd, &eevent);
@@ -114,6 +117,7 @@ void sm_add_events(SocketInfo* si, int events) {
 
     /* set events in epoll */
     si->events |= events;
+    memset(&eevent, 0, sizeof(eevent));
     eevent.events = si->events;
     eevent.data.ptr = si;
     epoll_ctl(monitor->epoll_fd, EPOLL_CTL_MOD, si->socket_fd, &eevent);
@@ -124,6 +128,7 @@ void sm_del_events(SocketInfo* si, int events) {
 
     /* set events in epoll */
     si->events &= ~events;
+    memset(&eevent, 0, sizeof(eevent));
     eevent.events = si->events;
     eevent.data.ptr = si;
     epoll_ctl(monitor->epoll_fd, EPOLL_CTL_MOD, si->socket_fd, &eevent);
@@ -141,8 +146,6 @@ void sm_del_socket(SocketInfo* si) {
     /* decremente the socket count */
     monitor->socket_count--;
 }
-
-#define MAX_EVENTS 1024
 
 void sm_poll(time_type timeout) {
     struct epoll_event events[MAX_EVENTS];
@@ -167,7 +170,6 @@ void sm_poll(time_type timeout) {
         log(ERROR, "%s", strerror(errno));
     }
 }
-
 
 void sm_init() {
     monitor = sm_new();
