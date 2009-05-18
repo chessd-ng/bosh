@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "http.h"
 
@@ -31,8 +32,12 @@
 void http_delete(HttpHeader* header) {
     int i;
 
-    free(header->type);
-    free(header->path);
+    if(header->type != NULL) {
+        free(header->type);
+    }
+    if(header->path != NULL) {
+        free(header->path);
+    }
 
     for(i = 0; i < header->n_fields; ++i) {
         free(header->fields[i].name);
@@ -92,8 +97,7 @@ HttpHeader* http_parse(const char* str) {
     }
     
     /* alloc header struct */
-    header = malloc(sizeof(HttpHeader));
-    header->n_fields = 0;
+    header = calloc(sizeof(HttpHeader), 1);
 
     /* read type */
     end_line = strstrany(str, HTTP_LINE_SEP);
@@ -102,11 +106,13 @@ HttpHeader* http_parse(const char* str) {
         header->type = parts[0];
         header->path = parts[1];
         parts[0] = parts[1] = NULL;
+        str = end_line;
+        while(isspace(*str)) ++str;
     } else {
         fail = 1;
     }
 
-    /* free uused data */
+    /* free unused data */
     for(i = 0; i < n; ++i) {
         if(parts[i] != NULL) {
             free(parts[i]);
