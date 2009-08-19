@@ -601,9 +601,10 @@ void jb_handle_http_post(JabberBind* bind, const HttpRequest* request) {
 void jb_handle_http_get(JabberBind* bind, const HttpRequest* request) {
     char* html;
     char* uptime_str;
-    int uptime, days, hours, minutes, seconds;
+    int days, hours, minutes, seconds;
+    time_type uptime;
 
-    uptime = (int)(get_time() - bind->start_time)/1000;
+    uptime = (get_time() - bind->start_time)/1000;
     seconds = uptime % 60;
     uptime /= 60;
     minutes = uptime % 60;

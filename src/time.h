@@ -20,7 +20,9 @@
 #ifndef TIME_H
 #define TIME_H
 
-typedef long long time_type;
+#include <stdint.h>
+
+typedef int64_t time_type;
 
 /*" \brief Returns he current time in miliseconds */
 time_type get_time();
