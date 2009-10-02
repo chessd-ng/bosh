@@ -551,11 +551,17 @@ void jb_handle_http_post(JabberBind* bind, const HttpRequest* request) {
     /* get the sid */
     tmp = iks_find_attrib(message, "sid");
     if(tmp != NULL) {
-        /* parse the sid */
-        sscanf(tmp, "%" PRId64, &sid);
+        /* TODO, improve error handling to prevent repeating error hangling code */
 
-        log(INFO, "Incoming request sid=%s %s", tmp,
-                request->data);
+        /* parse the sid */
+        if(sscanf(tmp, "%" PRId64, &sid) != 1) {
+            log(WARNING, "Invalid sid string %s", tmp);
+            jc_report_error(request->connection, BAD_FORMAT);
+            iks_delete(message);
+            return;
+        }
+
+        log(INFO, "Incoming request sid=%s %s", tmp, request->data);
 
         /* get the rid */
         tmp = iks_find_attrib(message, "rid");
