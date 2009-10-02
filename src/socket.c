@@ -171,25 +171,29 @@ void sock_flush_data(Socket* sock) {
     }
 }
 
-/*" \brief Handle vents in the socket */
+/*! \brief Handle events in the socket */
 void socket_callback(int events, void* user_data) {
-    int opt;
+    int error_code;
     socklen_t opt_len;
     Socket* sock = user_data;
 
     /* check if there was an error on the socket */
     if(events & (EPOLLERR | EPOLLHUP)) {
-        getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &opt, &opt_len);
+        opt_len = sizeof(error_code);
+        getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &error_code, &opt_len);
+
+        log(WARNING, "Error on socket %d: %s", sock->fd, strerror(error_code));
+
         sock_close(sock);
         if(sock->error_callback != NULL) {
-            sock->error_callback(sock->error_data, opt);
+            sock->error_callback(sock->error_data, error_code);
         }
     } else if(events & EPOLLOUT) {
         /* Check if we can write */
         if(sock->status == SOCKET_CONNECTING) {
-            opt_len = sizeof(opt);
-            getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &opt, &opt_len);
-            if(opt != 0) {
+            opt_len = sizeof(error_code);
+            getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &error_code, &opt_len);
+            if(error_code != 0) {
                 sock->status = SOCKET_IDLE;
             } else {
                 sock->status = SOCKET_CONNECTED;
@@ -198,7 +202,7 @@ void socket_callback(int events, void* user_data) {
                 }
             }
             if(sock->connect_callback != NULL) {
-                sock->connect_callback(opt, sock->connect_data);
+                sock->connect_callback(error_code, sock->connect_data);
             }
         } else if(sock->status == SOCKET_CONNECTED) {
             sock_flush_data(sock);
@@ -396,7 +400,6 @@ Socket* sock_accept(Socket* sock) {
         if(errno != EAGAIN && errno != EWOULDBLOCK) {
             log(WARNING, "Error when trying to accept connection: %s",
                     strerror(errno));
-            sock_close(sock);
         }
         return NULL;
     }
