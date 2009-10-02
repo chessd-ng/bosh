@@ -26,7 +26,7 @@
 #include "hash.h"
 #include "list.h"
 
-typedef void (*Callback)(int events, void* user_data);
+typedef void (*callback_t)(int events, void* user_data);
 
 typedef struct SocketInfo SocketInfo;
 
@@ -37,7 +37,7 @@ void sm_init();
 void sm_quit();
 
 /*! \brief Add a socket to the monitor. */
-SocketInfo* sm_add_socket(int socket_fd, Callback callback, void* user_data,
+SocketInfo* sm_add_socket(int socket_fd, callback_t callback, void* user_data,
         int events);
 
 /*! \brief Add a events to be monitored */

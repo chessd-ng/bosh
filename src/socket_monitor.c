@@ -30,11 +30,11 @@
 #define MAX_SOCKETS (1024*16)
 #define MAX_EVENTS 1024
 
-static unsigned int hash_int(const int i) {
+static inline unsigned int hash_int(int i) {
     return i;
 }
 
-static int cmp_int(int i1, int i2) {
+static inline int cmp_int(int i1, int i2) {
     return i1 == i2;
 }
 
@@ -48,7 +48,7 @@ typedef struct SocketMonitor {
 } SocketMonitor;
 
 struct SocketInfo {
-    Callback callback;
+    callback_t callback;
     void* user_data;
     int socket_fd;
     int events;
@@ -63,10 +63,15 @@ SocketMonitor* sm_new() {
     SocketMonitor* monitor = malloc(sizeof(SocketMonitor));
     monitor->socket_count = 0;
     monitor->socket_hash = int_hash_new();
+
+    /* according to the manual, the first argument is ignored,
+     * so it doesn't really mater the value of MAX_SOCKETS */
     monitor->epoll_fd = epoll_create(MAX_SOCKETS);
+
     return monitor;
 }
 
+/*! \brief hash delete callback */
 void socket_free_callback(int k, void* si) {
     SocketInfo_free(si);
 }
@@ -83,13 +88,14 @@ void sm_delete(SocketMonitor* monitor) {
     free(monitor);
 }
 
-SocketInfo* sm_add_socket(int socket_fd, Callback callback, void* user_data,
+SocketInfo* sm_add_socket(int socket_fd, callback_t callback, void* user_data,
         int events) {
+
     struct epoll_event eevent;
 
     SocketInfo* si;
 
-    /* check if the socket is already there */
+    /* check if the fd is already there */
     si = int_hash_find(monitor->socket_hash, socket_fd);
     if(si == NULL) {
         si = SocketInfo_alloc();
@@ -145,6 +151,9 @@ void sm_del_socket(SocketInfo* si) {
 
     /* decremente the socket count */
     monitor->socket_count--;
+
+    /* we need to keep the fd in the hash
+     * to prevent troubles if this function was called from sm_poll */
 }
 
 void sm_poll(time_type timeout) {
@@ -159,8 +168,7 @@ void sm_poll(time_type timeout) {
     if(ret > 0) {
         for(i = 0; i < ret; ++i) {
             si = events[i].data.ptr;
-            /* if the callback is null, the socket
-             * was removed already */
+            /* if the callback is null the socket was removed already */
             if(si->callback != NULL) {
                 log(INFO, "Event on socket %d", si->socket_fd);
                 si->callback(events[i].events, si->user_data);
