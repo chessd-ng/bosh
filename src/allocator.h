@@ -31,69 +31,87 @@
  * free'ing it.
  * */
 
+#ifndef DONT_USE_ALLOCATOR
+
 #define ALLOCATOR_BLOCK_SIZE 4096
 
 #define IMPLEMENT_ALLOCATOR(type)                                              \
     _##type##_allocator_node* _##type##_allocator_buffer = NULL;
 
 #define DECLARE_ALLOCATOR(type)                                                \
-    static const size_t _##type##alloc_step = (((sizeof(type) + (128*1024) - 1)\
-                / sizeof(type)) > ALLOCATOR_BLOCK_SIZE) ? ALLOCATOR_BLOCK_SIZE:\
-                ((sizeof(type) + (128*1024) - 1) / sizeof(type));              \
-    typedef struct _##type##_allocator_node {                                  \
-        struct _##type##_allocator_node *next, *prev;                          \
-        size_t size;                                                           \
-        type* objs[ALLOCATOR_BLOCK_SIZE];                                      \
-    } _##type##_allocator_node;                                                \
-    extern _##type##_allocator_node* _##type##_allocator_buffer;               \
-    static inline type* type##_alloc() {                                       \
-        int i;                                                                 \
                                                                                \
-        /* check if the buffer has not been initialized yet */                 \
-        if(_##type##_allocator_buffer == NULL) {                               \
-            _##type##_allocator_buffer =                                       \
-                malloc(sizeof(_##type##_allocator_node));                      \
-            _##type##_allocator_buffer->next = _##type##_allocator_buffer;     \
-            _##type##_allocator_buffer->prev = _##type##_allocator_buffer;     \
-            _##type##_allocator_buffer->size = 0;                              \
-        }                                                                      \
+static const size_t _##type##alloc_step = (((sizeof(type) + (128*1024) - 1)    \
+            / sizeof(type)) > ALLOCATOR_BLOCK_SIZE) ? ALLOCATOR_BLOCK_SIZE:    \
+            ((sizeof(type) + (128*1024) - 1) / sizeof(type));                  \
+typedef struct _##type##_allocator_node {                                      \
+    struct _##type##_allocator_node *next, *prev;                              \
+    size_t size;                                                               \
+    type* objs[ALLOCATOR_BLOCK_SIZE];                                          \
+} _##type##_allocator_node;                                                    \
+extern _##type##_allocator_node* _##type##_allocator_buffer;                   \
+static inline type* type##_alloc() {                                           \
+    int i;                                                                     \
                                                                                \
-        /* if there is no unused obj, alloc a bunch at once */                 \
-        if(_##type##_allocator_buffer->size == 0) {                            \
-            /* go back on the stack to see if there is any unused obj */       \
-            _##type##_allocator_buffer = _##type##_allocator_buffer->prev;     \
-            if(_##type##_allocator_buffer->size == 0) {                        \
-                type* objs = malloc(_##type##alloc_step*sizeof(type));         \
-                for(i = 0; i < _##type##alloc_step; ++i) {                     \
-                    _##type##_allocator_buffer->objs[i] = objs + i;            \
-                }                                                              \
-                _##type##_allocator_buffer->size = _##type##alloc_step;        \
-            }                                                                  \
-        }                                                                      \
-                                                                               \
-        return _##type##_allocator_buffer->objs                                \
-            [--_##type##_allocator_buffer->size];                              \
+    /* check if the buffer has not been initialized yet */                     \
+    if(_##type##_allocator_buffer == NULL) {                                   \
+        _##type##_allocator_buffer =                                           \
+            malloc(sizeof(_##type##_allocator_node));                          \
+        _##type##_allocator_buffer->next = _##type##_allocator_buffer;         \
+        _##type##_allocator_buffer->prev = _##type##_allocator_buffer;         \
+        _##type##_allocator_buffer->size = 0;                                  \
     }                                                                          \
                                                                                \
-    static inline void type##_free(type* obj) {                                \
-        /* check if the buffer is full */                                      \
-        if(_##type##_allocator_buffer->size == (ALLOCATOR_BLOCK_SIZE)) {       \
-            /* go foward on the stack to see if the is any empty space */      \
-            _##type##_allocator_buffer = _##type##_allocator_buffer->next;     \
-            if(_##type##_allocator_buffer->size == (ALLOCATOR_BLOCK_SIZE)) {   \
-                _##type##_allocator_node* node =                               \
-                    malloc(sizeof(_##type##_allocator_node));                  \
-                node->next = _##type##_allocator_buffer;                       \
-                node->prev = _##type##_allocator_buffer->prev;                 \
-                node->size = 0;                                                \
-                node->next->prev = node;                                       \
-                node->prev->next = node;                                       \
-                _##type##_allocator_buffer = node;                             \
+    /* if there is no unused obj, alloc a bunch at once */                     \
+    if(_##type##_allocator_buffer->size == 0) {                                \
+        /* go back on the stack to see if there is any unused obj */           \
+        _##type##_allocator_buffer = _##type##_allocator_buffer->prev;         \
+        if(_##type##_allocator_buffer->size == 0) {                            \
+            type* objs = malloc(_##type##alloc_step*sizeof(type));             \
+            for(i = 0; i < _##type##alloc_step; ++i) {                         \
+                _##type##_allocator_buffer->objs[i] = objs + i;                \
             }                                                                  \
+            _##type##_allocator_buffer->size = _##type##alloc_step;            \
         }                                                                      \
-        _##type##_allocator_buffer->objs                                       \
-        [_##type##_allocator_buffer->size++] = obj;                            \
+    }                                                                          \
+                                                                               \
+    return _##type##_allocator_buffer->objs                                    \
+        [--_##type##_allocator_buffer->size];                                  \
+}                                                                              \
+                                                                               \
+static inline void type##_free(type* obj) {                                    \
+    /* check if the buffer is full */                                          \
+    if(_##type##_allocator_buffer->size == (ALLOCATOR_BLOCK_SIZE)) {           \
+        /* go foward on the stack to see if the is any empty space */          \
+        _##type##_allocator_buffer = _##type##_allocator_buffer->next;         \
+        if(_##type##_allocator_buffer->size == (ALLOCATOR_BLOCK_SIZE)) {       \
+            _##type##_allocator_node* node =                                   \
+                malloc(sizeof(_##type##_allocator_node));                      \
+            node->next = _##type##_allocator_buffer;                           \
+            node->prev = _##type##_allocator_buffer->prev;                     \
+            node->size = 0;                                                    \
+            node->next->prev = node;                                           \
+            node->prev->next = node;                                           \
+            _##type##_allocator_buffer = node;                                 \
+        }                                                                      \
+    }                                                                          \
+    _##type##_allocator_buffer->objs                                           \
+    [_##type##_allocator_buffer->size++] = obj;                                \
     }
 
+
+
+#else
+
+#define IMPLEMENT_ALLOCATOR(type)
+
+#define DECLARE_ALLOCATOR(type)                                                \
+static inline type* type##_alloc() {                                           \
+    return malloc(sizeof(type));                                               \
+}                                                                              \
+                                                                               \
+static inline void type##_free(type* obj) {                                    \
+    free(obj);                                                                 \
+}
+#endif
 
 #endif
