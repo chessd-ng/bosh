@@ -50,7 +50,7 @@ typedef struct _##key_type##_hash_node {                                    \
     struct _##key_type##_hash_node* next;                                   \
 } _##key_type##_hash_node;                                                  \
                                                                             \
-/*! \brief The key_type##_hash table */                                     \
+/*! \brief The hash table */                                                \
 typedef struct key_type##_hash {                                            \
     _##key_type##_hash_node* table;                                         \
     size_t table_size;                                                      \
@@ -62,6 +62,7 @@ DECLARE_ALLOCATOR(key_type##_hash);                                         \
                                                                             \
 /*! \brief Creates a new hash table. */                                     \
 static inline key_type##_hash* key_type##_hash_new() {                      \
+                                                                            \
     key_type##_hash* h;                                                     \
                                                                             \
     h = key_type##_hash_alloc();                                            \
@@ -240,7 +241,7 @@ static inline size_t key_type##_hash_size(key_type##_hash* h) {             \
 }                                                                           \
                                                                             \
                                                                             \
-/*! \brief Insert a element or replace an elemente if the already exists    \
+/*! \brief Insert a element or replace an elemente if it already exists    \
  *                                                                          \
  * \return Returns the value of the                                         \
  *      replaced element or NULL if the key didn't exist.                   \
@@ -259,7 +260,6 @@ key_type##_hash_insert_replace(key_type##_hash* h, key_type key,            \
         node = node->next;                                                  \
         v = node->value;                                                    \
         node->value = value;                                                \
-        node->key = key;                                                    \
     }                                                                       \
                                                                             \
     return v;                                                               \
