@@ -341,7 +341,7 @@ int sock_listen(Socket* sock, int port) {
 
     /* create the socket */
     if((sock->fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-        log(ERROR, "Unable to create a socket: %s", port, strerror(errno));
+        log(ERROR, "Unable to create a socket on port %d: %s", port, strerror(errno));
         return 0;
     }
 

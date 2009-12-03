@@ -363,7 +363,7 @@ void jc_handle_error(void* _j_client, int code) {
     JabberClient* j_client = _j_client;
 
     log(WARNING, "Error on jabber connection sid=%" PRId64 ": %s",
-            strerror(code));
+            j_client->sid, strerror(code));
 
     jb_close_client(j_client);
 }

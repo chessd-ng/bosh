@@ -33,6 +33,8 @@ void log_init(iks* config);
 
 void log_quit();
 
-void _log(const char* function_name, int level, const char* format, ...);
+void _log(const char* function_name, int level, const char* format, ...)
+    __attribute__ ((format (printf, 3, 4)));
+
 
 #endif
