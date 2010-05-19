@@ -155,7 +155,7 @@ void sock_flush_data(Socket* sock) {
                 log(WARNING, "Failed to write to socket %d: %s", sock->fd,
                         strerror(errno));
                 sock_close(sock);
-                break;
+                return;
             }
         }
 
