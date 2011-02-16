@@ -69,6 +69,21 @@ IMPLEMENT_ALLOCATOR(QueueItem);
 DECLARE_ALLOCATOR(Socket);
 IMPLEMENT_ALLOCATOR(Socket);
 
+/*! \brief Alloc a queue item */
+QueueItem* item_new(void* buffer, size_t len, size_t offset) {
+    QueueItem* item = QueueItem_alloc();
+    item->buffer = buffer;
+    item->len = len;
+    item->offset = offset;
+    return item;
+}
+
+/*! \brief Free a queue item */
+void item_delete(QueueItem* item) {
+    free(item->buffer);
+    QueueItem_free(item);
+}
+
 /*! \brief Create a new socket */
 Socket* sock_new() {
     Socket* sock;
@@ -93,12 +108,6 @@ Socket* sock_new() {
     sock->output_queue = list_new();
 
     return sock;
-}
-
-/*! \breif Free a queue item */
-void item_delete(QueueItem* item) {
-    free(item->buffer);
-    QueueItem_free(item);
 }
 
 /*! \brief Close the socket */
@@ -168,6 +177,8 @@ void sock_flush_data(Socket* sock) {
 
     if(list_empty(sock->output_queue)) {
         sm_del_events(sock->si, EPOLLOUT);
+    } else {
+        sm_add_events(sock->si, EPOLLOUT);
     }
 }
 
@@ -177,8 +188,8 @@ void socket_callback(int events, void* user_data) {
     socklen_t opt_len;
     Socket* sock = user_data;
 
-    /* check if there was an error on the socket */
     if(events & (EPOLLERR | EPOLLHUP)) {
+        /* If there was an error on the socket */
         opt_len = sizeof(error_code);
         getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &error_code, &opt_len);
 
@@ -189,8 +200,10 @@ void socket_callback(int events, void* user_data) {
             sock->error_callback(sock->error_data, error_code);
         }
     } else if(events & EPOLLOUT) {
-        /* Check if we can write */
+        /* The socket is writable now */
         if(sock->status == SOCKET_CONNECTING) {
+            /* If we are connecting, then the socket is connected
+             * if no error ocurred */
             opt_len = sizeof(error_code);
             getsockopt(sock->fd, SOL_SOCKET, SO_ERROR, &error_code, &opt_len);
             if(error_code != 0) {
@@ -205,23 +218,30 @@ void socket_callback(int events, void* user_data) {
                 sock->connect_callback(error_code, sock->connect_data);
             }
         } else if(sock->status == SOCKET_CONNECTED) {
+            /* If we are already connected, we can flush the buffer */
             sock_flush_data(sock);
         }
     } else if(events & EPOLLIN) {
-        /* check if we can read */
+        /* If there is an incoming event */
         if(sock->status == SOCKET_LISTENING) {
+            /* If we are listening, then there is an incoming
+             * connection */
             if(sock->accept_callback != NULL) {
                 sock->accept_callback(sock->accept_data);
             } else {
+                /* This shouldn't happen */
                 sm_del_events(sock->si, EPOLLIN);
             }
         } else if(sock->status == SOCKET_CONNECTED) {
+            /* If we are connected, then there is data available */
             if(sock->data_callback != NULL) {
                 sock->data_callback(sock->data_data);
             } else {
+                /* This shouldn't happen */
                 sm_del_events(sock->si, EPOLLIN);
             }
         } else {
+            /* This shouldn't happen */
             log(ERROR, "POLLIN event on idle socket");
         }
     }
@@ -269,7 +289,7 @@ int sock_connect(Socket* sock, const char* host, int port) {
         return 0;
     } 
 
-    /* wait the connection to be completed */
+    /* the socket should become writable when the connection is complete */
     sock->si = sm_add_socket(sock->fd, socket_callback, sock, EPOLLOUT);
 
     sock->status = SOCKET_CONNECTING;
@@ -279,23 +299,26 @@ int sock_connect(Socket* sock, const char* host, int port) {
 
 /*! \brief Receive data from the socket
  *
- * Returns the number of bytes read. When the connection by the remote host
- * and this function is called, the socket status will change to idle. This
- * function never blocks, if there is no data to read it will return 0 */
+ * This function receive data from the socket and write on the buffer, at most
+ * len bytes are received. Returns the number of bytes received.  If 0 is
+ * returned, the connections status might have changed due to an error or if
+ * the connection is closed. This function never blocks */
 ssize_t sock_recv(Socket* sock, void* buffer, size_t len) {
     ssize_t ret;
 
     /* read data */
     ret = recv(sock->fd, buffer, len, MSG_DONTWAIT | MSG_NOSIGNAL);
 
-    /* parse the result */
     if(ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        /* no data available */
         ret = 0;
     } else if(ret == -1) {
+        /* connection error */
         log(WARNING, "Unable to read socket %d: %s", sock->fd, strerror(errno));
         sock_close(sock);
         ret = 0;
     } else if(ret == 0) {
+        /* connection closed */
         sock_close(sock);
     }
 
@@ -308,26 +331,15 @@ ssize_t sock_recv(Socket* sock, void* buffer, size_t len) {
  * to be sent later. The ownership of the buffer is passed to the calee
  * function. Don't expect the buffer pointer to be valid after this call. */
 void sock_send(Socket* sock, void* buffer, size_t len, int more) {
-    int was_empty;
     QueueItem* item;
 
-    was_empty = list_empty(sock->output_queue);
-
     if(buffer != NULL) {
-        item = QueueItem_alloc();
-
-        item->buffer = buffer;
-        item->len = len;
-        item->offset = 0;
+        item = item_new(buffer, len, 0);
         list_push_back(sock->output_queue, item);
     }
 
-    if(sock->status == SOCKET_CONNECTED && was_empty && (more == 0)) {
+    if(sock->status == SOCKET_CONNECTED && more == 0) {
         sock_flush_data(sock);
-    }
-
-    if(was_empty && !list_empty(sock->output_queue)) {
-        sm_add_events(sock->si, EPOLLOUT);
     }
 }
 
@@ -378,11 +390,8 @@ int sock_listen(Socket* sock, int port) {
     sock->status = SOCKET_LISTENING;
 
     /* monitor incoming connections */
-    if(sock->accept_callback != NULL) {
-        sock->si = sm_add_socket(sock->fd, socket_callback, sock, EPOLLIN);
-    } else {
-        sock->si = sm_add_socket(sock->fd, socket_callback, sock, 0);
-    }
+    opt = sock->accept_callback != NULL ? EPOLLIN : 0;
+    sock->si = sm_add_socket(sock->fd, socket_callback, sock, opt);
 
     return 1;
 }

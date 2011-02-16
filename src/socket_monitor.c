@@ -121,6 +121,11 @@ SocketInfo* sm_add_socket(int socket_fd, callback_t callback, void* user_data,
 void sm_add_events(SocketInfo* si, int events) {
     struct epoll_event eevent;
 
+    /* check if event is already there */
+    if((si->events & events) == events) {
+        return;
+    }
+
     /* set events in epoll */
     si->events |= events;
     memset(&eevent, 0, sizeof(eevent));
