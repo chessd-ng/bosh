@@ -1,0 +1,5 @@
+bosh
+.deps/
+obj/
+log/
+log.txt
